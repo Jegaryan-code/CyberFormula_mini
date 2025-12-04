@@ -29,8 +29,9 @@ const CARSPECS = [
   { image: "Union Savior/Issuxark_00-X.png", acceleration: 4.7, handling: 0.8 },
   { image: "Union Savior/Issuxark_00-X3_II.png", acceleration: 4.7, handling: 0.8 },
   
-  { image: "STORMZENDER/Spiegel_HP-022.png", acceleration: 4.4, handling: 0.95 }, 
-  { image: "STORMZENDER/Spiegel_HP-022_B.png", acceleration: 4.4, handling: 0.95 }, 
+  //{ image: "STORMZENDER/Spiegel_HP-022.png", acceleration: 4.4, handling: 0.95 }, 
+  //{ image: "STORMZENDER/Spiegel_HP-022_B.png", acceleration: 4.4, handling: 0.95 }, 
   
   { image: "Albatross DDT/Albatrander_602.png", acceleration: 4.7, handling: 0.9 }
 ];
+
