@@ -171,7 +171,7 @@
         
         let player = null, allCars = [], gameState = 'title', mode = '', countdown = 0;
         let selectedCar = 0, playerCarImg = new Image(), trackImg = null;
-        let keys = {}, touch = {}, lap = 1, totalLaps = 3, raceFinished = false, currentTrack = 0;
+        let keys = {}, touch = {}, lap = 0, totalLaps = 3, raceFinished = false, currentTrack = 0;
         let boostParticles = []; // 加速特效粒子
         
         // 碰撞檢測函數
@@ -204,12 +204,10 @@
 		  const wp = TRACKS[currentTrack].waypoints;
 		  if (!wp.length) return;
 
-		  // 目標 waypoint
 		  const baseTarget = wp[car.waypointIndex];
 		  let tx = baseTarget.x * SCALE;
 		  let ty = baseTarget.y * SCALE;
 
-		  // 基於 waypoint 切線計算左右偏移 (簡化：用下一個點方向)
 		  const nextIndex = (car.waypointIndex + 1) % wp.length;
 		  const nx = wp[nextIndex].x * SCALE;
 		  const ny = wp[nextIndex].y * SCALE;
@@ -217,16 +215,14 @@
 		  let dirY = ny - ty;
 		  const len = Math.hypot(dirX, dirY) || 1;
 		  dirX /= len; dirY /= len;
-		  // 法線向量 = 右邊
 		  const nX = -dirY;
 		  const nY = dirX;
 
-		  // 基本線：自己的 laneOffset
 		  const baseOffset = car.laneOffset || 0;
 		  tx += nX * baseOffset;
 		  ty += nY * baseOffset;
 
-		  // 找出同一段路上、前面最近的車（包括玩家）
+		  // --- 1. 找前車 ---
 		  let frontCar = null;
 		  let minDist = Infinity;
 		  const candidates = [...allCars, player].filter(c => c !== car);
@@ -234,18 +230,39 @@
 			const dx = other.x - car.x;
 			const dy = other.y - car.y;
 			const dist = Math.hypot(dx, dy);
-			const rel = dx * dirX + dy * dirY; // 投影到前進方向
-			if (rel > 0 && dist < 250 && dist < minDist) { // 前面250px內
+			const rel = dx * dirX + dy * dirY;   // 前後
+			if (rel > 0 && dist < 260 && dist < minDist) {
 			  minDist = dist;
 			  frontCar = other;
 			}
 		  });
 
-		  // 如果前面有車，嘗試向左／右多偏一條線
+		  // --- 2. 決定有冇進入 overtake 模式 ---
+		  const wantOvertake = frontCar &&
+			minDist < 260 &&                    // 幾近
+			car.speed > (frontCar.speed || 0) + 2;  // 明顯快過前面
+
+		  if (car.overtakeTimer <= 0 && wantOvertake) {
+			// 開始一個 1~2 秒嘅超車窗口
+			car.overtakeTimer = 60 + Math.random() * 60;
+			const sideRaw = Math.sign((frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY);
+			car.overtakeSide = sideRaw === 0 ? (Math.random() < 0.5 ? -1 : 1) : sideRaw;
+		  }
+
+		  if (car.overtakeTimer > 0) {
+			car.overtakeTimer--;
+		  } else {
+			car.overtakeSide = 0;
+		  }
+
+		  // --- 3. 計最終 offset ---
 		  let dynamicOffset = 0;
-		  if (frontCar) {
+		  if (car.overtakeSide !== 0) {
+			dynamicOffset = car.overtakeSide * 120;  // 真正出線
+		  } else if (frontCar && minDist < 150) {
+			// 冇正式超車，只係避一避
 			const side = Math.sign((frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY) || 1;
-			dynamicOffset = side * 80; // 額外多偏 80px 去超車
+			dynamicOffset = side * 40;
 		  }
 
 		  const targetX = tx + nX * dynamicOffset;
@@ -254,31 +271,34 @@
 		  const dx = targetX - car.x;
 		  const dy = targetY - car.y;
 		  const distToWp = Math.hypot(dx, dy);
-
 		  if (distToWp < 500) {
 			car.waypointIndex = (car.waypointIndex + 1) % wp.length;
 		  }
 
 		  const targetAngle = Math.atan2(dy, dx);
 		  let angleDiff = targetAngle - car.angle;
-		  // 正規化角度差到 [-PI, PI]
 		  angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
-		  car.angle += angleDiff * 0.15; // 轉向平滑少少
+		  car.angle += angleDiff * 0.18;
 
-		  // 速度控制：正常加速，前面塞車就減速
-		  const maxSpeedBase = 23 + Math.random() * 4;
-		  if (frontCar && minDist < 120) {
+		  // --- 4. 速度控制，用 speedFactor 拉開實力 ---
+		  const sf = car.speedFactor || 1;
+		  const maxSpeedBase = (23 + Math.random() * 4) * sf;
+
+		  if (frontCar && minDist < 120 && car.overtakeSide === 0) {
+			// 未出線之前，跟車少少
 			car.speed += car.spec.acceleration * 0.03;
-			car.speed = Math.min(car.speed, maxSpeedBase * 0.7); // 跟車
+			car.speed = Math.min(car.speed, maxSpeedBase * 0.5);
 		  } else {
+			// 正常 / 超車
 			car.speed += car.spec.acceleration * 0.06;
-			car.speed = Math.min(car.speed, maxSpeedBase);       // 正常 / 超車
+			car.speed = Math.min(car.speed, maxSpeedBase);
 		  }
-		  car.speed *= 0.985; // 空氣阻力
+		  car.speed *= 0.985;
 
 		  car.x += Math.cos(car.angle) * car.speed;
 		  car.y += Math.sin(car.angle) * car.speed;
 		}
+
 
         
         function loadTrack(i) {
@@ -339,11 +359,19 @@
                     const img = new Image();
                     img.src = CARSPECS[idx].image;
                     const p = t.gridPositions[i];
-                    allCars.push({
-                        x: p.x * SCALE, y: p.y * SCALE, angle: t.playerStart.angle ,
-                        speed: 0, spec: CARSPECS[idx], img: img, waypointIndex: 0,
-						laneOffset: (i % 2 === 0 ? -60 : 60)  // 左右偏少少
-                    });
+					allCars.push({
+					  x: p.x * SCALE,
+					  y: p.y * SCALE,
+					  angle: t.playerStart.angle,   // 用返你現時角度
+					  speed: 0,
+					  spec: CARSPECS[idx],
+					  img: img,
+					  waypointIndex: 0,
+					  overtakeTimer: 0,
+					  overtakeSide: 0,
+					  laneOffset: (i % 2 === 0 ? -60 : 60),
+					  speedFactor: 0.9 + Math.random() * 0.3  // 0.9~1.2 之間
+					});
                 });
             }
             player = {
@@ -358,6 +386,7 @@
 			
 			// 在 startRace() 尾加：
 			player.prevY = player.y;
+			document.getElementById('lapHud').textContent = `LAP 0/${totalLaps}`;
 			
         }
         
@@ -604,15 +633,31 @@
                 }
                 
                 // 完賽檢測
+				// 完賽檢測（放喺 gameState === 'racing' && !raceFinished 裏面）
 				const startLineY = TRACKS[currentTrack].start.y * SCALE;
 
+				// 只計由線後 → 線前（視乎方向，可視需要調轉 >= / <）
 				if (player.prevY >= startLineY && player.y < startLineY && player.speed > 10) {
 					lap++;
-					if (lap > totalLaps) {
-						// finish
+
+					if (lap === 1) {
+						// 第一次過線：由 0 -> 1，只係開始計圈
+					} else if (lap > totalLaps) {
+						// 真正完賽
+						raceFinished = true;
+						gameState = 'finished';
+
+						const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
+						const pos = sorted.findIndex(c => c === player) + 1;
+						document.getElementById('finalPos').textContent =
+						  `FINAL POS #${pos}/${allCars.length + 1}`;
+						document.getElementById('finishScreen').style.display = 'flex';
 					}
 				}
+
+				// 無論有冇過線，都要更新 prevY
 				player.prevY = player.y;
+
                 
                 // 更新HUD
                 const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
