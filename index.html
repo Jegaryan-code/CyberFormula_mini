@@ -239,7 +239,7 @@
 
 		  // --- 2. 決定有冇進入 overtake 模式 ---
 		  const wantOvertake = frontCar &&
-			minDist < 260 &&                    // 幾近
+			minDist < 350 &&                    // 幾近
 			car.speed > (frontCar.speed || 0) + 2;  // 明顯快過前面
 
 		  if (car.overtakeTimer <= 0 && wantOvertake) {
