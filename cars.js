@@ -1,5 +1,5 @@
 const CARSPECS = [
-  { image: "1. SUGO/asurada_gsx.png", acceleration: 4.8, handling: 0.7 },
+  { image: "1.SUGO/asurada_gsx.png", acceleration: 4.8, handling: 0.7 },
   { image: "1. SUGO/Asurada_GSX_Rally.png", acceleration: 4.8, handling: 0.7 },
   
   { image: "1. SUGO/Super_Asurada_01.png", acceleration: 5.1, handling: 0.8 },
@@ -34,3 +34,4 @@ const CARSPECS = [
   
   { image: "5. ALBATROSS DDT/Albatrander_602.png", acceleration: 4.5, handling: 0.7 }
 ];
+
