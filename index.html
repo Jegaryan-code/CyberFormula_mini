@@ -6,9 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=0.5, maximum-scale=0.5, user-scalable=no">
     <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Orbitron:wght@900&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; background: #2a2a2a; overflow: hidden; font-family: Rajdhani, sans-serif; color: #fff; }
-        canvas#game { display: block; background: transparent; margin: 20px auto; border: 3px solid #333; z-index: 1; }
+        /* --- GLOBAL --- */
+        body { 
+            margin: 0; 
+            background: #2a2a2a; 
+            overflow: hidden; 
+            font-family: Rajdhani, sans-serif; 
+            color: #fff; 
+        }
+        canvas#game { 
+            display: block; 
+            background: transparent; 
+            margin: 20px auto; 
+            border: 3px solid #333; 
+            z-index: 1; 
+        }
 		
+        /* --- TITLE SCREEN (SFC Logo & Blue Sky) --- */
 		/* 1. 改為藍天背景 */
 		#titleScreen {
 			position: fixed;
@@ -20,29 +34,15 @@
 			justify-content: center;
 			align-items: center;
 			z-index: 999;
-			/* 可以加入一張淡淡的雲朵背景圖增加細節 (選用) */
-			/* background-image: url('clouds.png'), linear-gradient(...); */
-			/* background-blend-mode: soft-light; */
-		}
-		@keyframes gradientBG {
-			0% { background-position: 0% 50%; }
-			50% { background-position: 100% 50%; }
-			100% { background-position: 0% 50%; }
 		}
 
-		/* 2. 新增 Logo 圖片樣式 (手機適用) */
+		/* 2. Logo 圖片樣式 (手機適用) */
 		#titleLogo {
-			/* 確保在大螢幕上不會超過原始尺寸太多 */
 			max-width: 600px; 
-			/* 關鍵：在小螢幕 (手機) 上，寬度最多佔 90%，高度自動維持比例 */
 			width: 90%;
 			height: auto;
-			
 			margin-bottom: 10px;
-			/* 加上一點點浮起的陰影，讓 Logo 更有立體感 */
 			filter: drop-shadow(0px 8px 15px rgba(0, 0, 0, 0.4));
-			
-			/* 進場動畫 (選用)：從上方滑入 */
 			animation: slideDown 0.8s ease-out;
 		}
 
@@ -55,11 +55,10 @@
 		#titleScreen h2 {
 			font-family: 'Rajdhani', sans-serif;
 			font-size: 50px;
-			/* 改為白色文字 */
 			color: #ffffff;
 			margin: 0 0 40px 0;
 			letter-spacing: 8px;
-			/* 改用深藍色描邊效果，而非霓虹發光，更像遊戲介面 */
+			/* 深藍色描邊效果 */
 			text-shadow: 
 				3px 3px 0px #003366, 
 				-3px -3px 0px #003366,
@@ -68,33 +67,19 @@
 			font-weight: 700;
 		}
 
-
-		#titleScreen h2 { 
-			font-family: 'Rajdhani', sans-serif; font-size: 60px; color: #00ffea; 
-			text-shadow: 0 0 20px #00ffea; margin-top: -10px; letter-spacing: 10px; 
-		}
-
-       
-       
         #checkered { width: 600px; height: 140px; display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(4, 1fr); border: 8px solid #fff; box-shadow: 0 0 50px rgba(255,255,255,0.8); margin: 50px 0; }
         #checkered div { width: 100%; height: 100%; background: #000; }
         #checkered div:nth-child(odd) { background: #fff; }
-        #checkered div:nth-child(even) { background: #000; }
+        /* 調整棋盤格顏色在藍天背景下更融合 */
+        #checkered div:nth-child(even) { background: rgba(0, 0, 0, 0.8); }
         
         #startTitleBtn { background: linear-gradient(45deg, #ff1b6b, #ff8c00); color: #fff; padding: 25px 90px; font-size: 48px; border: none; border-radius: 60px; cursor: pointer; transition: 0.4s; box-shadow: 0 15px 40px rgba(255,27,107,0.5); font-weight: 700; letter-spacing: 5px; }
         #startTitleBtn:hover { transform: scale(1.1); }
         
-        #finishScreen { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 999; }
-        #finishScreen h1 { font-family: Orbitron, sans-serif; font-size: 120px; color: #00ff41; text-shadow: 0 0 50px #00ff41; }
-        #finalPos { font-size: 60px; margin: 30px 0; text-shadow: 0 0 30px #fff; }
-        #backToMenuBtn { background: #00ff41; color: #000; padding: 25px 100px; font-size: 45px; border: none; border-radius: 60px; cursor: pointer; font-weight: 700; }
-        
+        /* --- GAME UI --- */
         #gameContainer { position: relative; width: 1000px; height: 1600px; margin: 20px auto; }
         canvas { z-index: 1; }
         #hud, #lapHud, #posHud, #speedHud, #countdown { z-index: 10; position: absolute; font-weight: bold; }
-		
-		/* 隱藏舊的文字 HUD，準備用 Canvas 畫 */
-		#speedHud { display: none; } 
 		
 		/* 新增儀表板 Canvas */
 		#dashboardCanvas {
@@ -114,33 +99,123 @@
 			pointer-events: none; /* 讓點擊穿透 */
 		}
 		
-        #hud { top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 12px; font: 22px Arial; }
-        #lapHud { top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 12px 35px; border-radius: 12px; font: 32px Arial; }
-        #posHud { top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 10px 25px; border-radius: 12px; font: 26px Arial; }
-        #speedHud { bottom: 240px; right: 30px; background: rgba(255,0,0,0.8); padding: 20px 40px; border-radius: 25px; font: 60px bold Arial; text-shadow: 0 0 20px #ff0000; }
+        /* 統一 HUD 樣式 */
+        #hud, #lapHud, #posHud { 
+            background: rgba(0, 0, 0, 0.7); 
+            border-left: 4px solid #00ffea; /* 增加科技感邊條 */
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            transform: skewX(-15deg); /* 增加速度感傾斜 */
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+        }
+
+        #hud { top: 20px; left: 20px; font-size: 22px; }
+        #lapHud { top: 20px; left: 50%; transform: translateX(-50%) skewX(-15deg); font-size: 32px; padding: 12px 35px; }
+        #posHud { top: 20px; right: 20px; font-size: 26px; }
+        #speedHud { display: none; } /* 速度儀表改用 Canvas 繪製，此處隱藏 */
         #countdown { top: 50%; left: 50%; transform: translate(-50%,-50%); font: 220px bold Arial; color: #ff0044; display: none; text-shadow: 0 0 60px #ff0000; }
         
+        /* --- MENU BASE --- */
         .menu { display: none; position: fixed; inset: 0; background: #000; flex-direction: column; align-items: center; overflow-y: auto; z-index: 99; padding: 40px 20px 120px; }
         .menu.active { display: flex; }
         .menu h1 { font-family: Orbitron, sans-serif; font-size: 70px; margin: 20px 0; text-shadow: 0 0 30px #00ffff; }
-        
         .btn { background: linear-gradient(45deg, #667eea, #764ba2); padding: 18px 50px; margin: 15px; font-size: 36px; border: none; border-radius: 15px; cursor: pointer; width: 80%; max-width: 500px; transition: 0.3s; box-shadow: 0 10px 30px rgba(102,126,234,0.4); }
         .btn:hover { transform: scale(1.05); box-shadow: 0 15px 40px rgba(102,126,234,0.6); }
         
-        /* Track Select */
+        /* --- CAR SELECT MENU (新增/修改) --- */
+
+		/* 調整菜單整體背景與邊框 */
+		#trackSelectMenu, #carMenu {
+			background: rgba(10, 20, 40, 0.95); 
+			border: 5px solid #00ffea;
+			box-shadow: 0 0 30px #00ffea;
+			padding: 20px;
+		}
+
+        /* 擴大車輛列表容器 */
+        #carMenu .container { 
+            max-width: 1000px; 
+            width: 95%; 
+            padding: 20px 0; 
+            margin: 0 auto;
+        }
+
+        /* 新增車隊標題樣式 */
+        .team-header {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 30px;
+            color: #fff;
+            background: linear-gradient(90deg, #00ffea, transparent);
+            padding: 5px 15px;
+            margin-top: 25px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-radius: 5px;
+            transform: skewX(-15deg); 
+            display: inline-block;
+        }
+
+        /* 車輛列表容器：一行四個，左對齊 */
+        .car-list-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-start; /* 左對齊 */
+            margin: 0 0 30px 0; 
+            padding: 0;
+            list-style: none;
+            width: 100%; /* 確保容器滿寬 */
+        }
+
+        /* 修正單個車輛的格子 (Grid Item) */
+        .car-list-container li {
+            list-style: none;
+            /* 一行四個，扣除 margin 後的寬度 */
+            width: calc(25% - 30px); 
+            margin: 15px;
+            padding: 10px;
+            cursor: pointer;
+            border: 3px solid transparent; 
+            box-sizing: border-box;
+            text-align: center;
+            background: #222;
+            border-radius: 8px;
+            transition: 0.3s;
+        }
+        .car-list-container li:hover {
+            transform: scale(1.05);
+            background: #333;
+        }
+
+        /* 關鍵修正: 統一車輛圖片尺寸 */
+        .car-list-container li img {
+            width: 100%;
+            max-height: 120px; /* 統一的最大高度 */
+            height: 120px; /* 固定高度，讓所有卡片高度一致 */
+            object-fit: contain; /* 確保圖片縮放而不被裁切 */
+            display: block;
+            margin: 0 auto;
+            padding: 5px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        /* 確保選中狀態 */
+        .car-list-container li.selected {
+            border-color: #ffcc00; 
+            box-shadow: 0 0 10px #ffcc00;
+        }
+        
+        /* 舊的 #carList 已被 .car-list-container 取代，這裡只保留容器名 */
+        #carList { width: 100%; } 
+        
+        /* --- TRACK SELECT --- */
         #trackSelect .track-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; width: 100%; max-width: 1000px; margin: 30px 0; }
         .track-card { background: #111; padding: 20px; border-radius: 15px; cursor: pointer; transition: 0.3s; border: 4px solid transparent; text-align: center; }
         .track-card:hover { transform: scale(1.05); background: #222; }
         .track-card.selected { border: 4px solid #00ff41; background: #003300 !important; }
         .track-card img { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 10px; }
-        
-        /* Car Select */
-        #carMenu .container { max-width: 450px; width: 100%; padding: 20px 0; }
-        #carList { display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; width: 100%; max-width: 450px; margin: 30px auto; }
-        .card { background: #222; padding: 20px; border-radius: 15px; cursor: pointer; transition: 0.3s; text-align: center; border: 4px solid transparent; }
-        .card:hover { transform: scale(1.05); background: #333; }
-        .card.selected { border: 4px solid #0f0; background: #003300 !important; }
-        .card img { width: 100%; max-height: 40vh; object-fit: contain; }
         
         /* Mobile Controls */
 		#mobileControls {
@@ -183,7 +258,6 @@
 		#mobileControls button:active {
 		  transform: scale(0.9);
 		}
-
     </style>
 </head>
 <body>
@@ -191,8 +265,7 @@
         <img id="titleLogo" src="Cyber_Formula.png" alt="Cyber Formula Logo">
         <h2>MINI RACE</h2>
         <div id="checkered">
-            <!-- Checkered pattern generated by JS -->
-        </div>
+            </div>
         <button id="startTitleBtn">START</button>
     </div>
     
@@ -293,24 +366,6 @@
 		}
 		
 		
-		// 1. 視覺升級：繪製沙地背景 (替代原本的單色背景)
-		function drawSandBackground(ctx, offsetX, offsetY) {
-			const patternSize = 100;
-			ctx.save();
-			ctx.fillStyle = '#C2B280'; // 沙地底色
-			ctx.fillRect(0, 0, W, H);
-			
-			// 畫一點雜點質感
-			ctx.fillStyle = 'rgba(160, 140, 80, 0.3)';
-			for (let i=0; i<W; i+=50) {
-				for (let j=0; j<H; j+=50) {
-					// 根據位置偏移製造流動感，或者固定紋理
-					if ((i+j)%100 === 0) ctx.fillRect(i, j, 50, 50);
-				}
-			}
-			ctx.restore();
-		}
-
 		// 2. 視覺升級：改進的賽道繪製 (加入紅白路緣石)
 		function drawCurrentTrackRoad(ctx, offsetX, offsetY) {
 			const t = TRACKS[currentTrack];
@@ -340,13 +395,13 @@
 			ctx.lineWidth = 700;
 			ctx.strokeStyle = '#ffffff';
 			ctx.setLineDash([50, 50]); // 50px實線, 50px空白
-			ctx.lineDashOffset = -Date.now() / 20; // (選用) 讓路緣石有速度感的流動特效！如果不想要流動，刪除這行
+			ctx.lineDashOffset = -Date.now() / 20; // 讓路緣石有速度感的流動特效
 			ctx.stroke();
 			
 			ctx.setLineDash([]); // 重置虛線
 
 			// --- 第三層：柏油路面 (灰色) ---
-			// 寬度設為 550，這樣左右各會露出 (700-550)/2 = 75px 的路緣石
+			// 寬度設為 550
 			ctx.lineWidth = 550;
 			ctx.strokeStyle = '#555555'; // 深灰路面
 			ctx.stroke();
@@ -377,11 +432,11 @@
 			const speedPct = Math.min(Math.abs(speed), maxSpeed) / maxSpeed;
 			const currentAngle = startAngle + (endAngle - startAngle) * speedPct;
 
-			// 2. 畫儀表背板 (半透明黑色弧形，而非矩形)
+			// 2. 畫儀表背板 (半透明黑色弧形)
 			dashCtx.beginPath();
 			dashCtx.arc(cx, cy, radius, startAngle, endAngle);
 			dashCtx.lineWidth = 40;
-			dashCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)'; // 只有刻度條後面有半透明黑
+			dashCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)'; 
 			dashCtx.stroke();
 
 			// 3. 畫顏色漸層條
@@ -394,7 +449,7 @@
 			dashCtx.arc(cx, cy, radius, startAngle, endAngle);
 			dashCtx.lineWidth = 20;
 			dashCtx.lineCap = 'butt';
-			dashCtx.strokeStyle = 'rgba(255,255,255,0.1)'; // 未亮起的底色
+			dashCtx.strokeStyle = 'rgba(255,255,255,0.1)'; 
 			dashCtx.stroke();
 
 			// 亮起的部分
@@ -404,14 +459,14 @@
 			dashCtx.strokeStyle = grad;
 			dashCtx.stroke();
 
-			// 4. 畫指針 (更銳利)
+			// 4. 畫指針
 			dashCtx.save();
 			dashCtx.translate(cx, cy);
 			dashCtx.rotate(currentAngle);
 			
 			dashCtx.beginPath();
 			dashCtx.moveTo(0, 0);
-			dashCtx.lineTo(radius + 10, 0); // 指針稍微凸出一點
+			dashCtx.lineTo(radius + 10, 0); 
 			dashCtx.lineWidth = 4;
 			dashCtx.strokeStyle = '#fff';
 			dashCtx.shadowBlur = 10;
@@ -419,7 +474,7 @@
 			dashCtx.stroke();
 			dashCtx.restore();
 
-			// 5. 數字速度 (科幻字體)
+			// 5. 數字速度
 			dashCtx.font = 'italic bold 60px Orbitron';
 			dashCtx.fillStyle = '#fff';
 			dashCtx.textAlign = 'center';
@@ -436,7 +491,7 @@
 		
 		
         
-        // 碰撞檢測函數
+        // 碰撞檢測函數 (省略，保持不變)
 		function checkCollisions(car1, car2) {
 		  const dx = car2.x - car1.x;
 		  const dy = car2.y - car1.y;
@@ -453,14 +508,13 @@
 			car2.x += nx * push;
 			car2.y += ny * push;
 
-			// 只係略略衰減速度，唔交換
 			car1.speed *= 0.9;
 			car2.speed *= 0.9;
 		  }
 		}
 
         
-        // 改進的AI超車邏輯
+        // AI 邏輯 (省略，保持不變)
 		function followWaypoints(car) {
 		  if (car.waypointIndex == null) car.waypointIndex = 0;
 		  const wp = TRACKS[currentTrack].waypoints;
@@ -592,21 +646,85 @@
             });
         }
         
+        // --- [修改] 分車隊並統一大小的選單生成函數 ---
         function buildCarList() {
-            const list = document.getElementById('carList');
-            list.innerHTML = '';
-            CARSPECS.forEach((c, i) => {
-                const d = document.createElement('div');
-                d.className = `card ${i === selectedCar ? 'selected' : ''}`;
-                d.innerHTML = `<img src="${c.image}"><br>${c.image.split('.')[0]}`;
-                d.onclick = () => {
-                    selectedCar = i;
-                    list.querySelectorAll('.card').forEach(x => x.classList.remove('selected'));
-                    d.classList.add('selected');
-                };
-                list.appendChild(d);
+            const container = document.getElementById('carList'); // carList is the overall container
+            container.innerHTML = ''; // 清空舊內容
+
+            // 1. 按車隊分組
+            const teams = {};
+            CARSPECS.forEach((spec, index) => {
+                // 從圖片路徑提取車隊名稱，例如 "SUGO/asurada_gsx.png" -> "SUGO"
+                const teamNameMatch = spec.image.match(/^(\w+)\//);
+                // 使用首字母大寫的隊名
+                let teamName = teamNameMatch ? teamNameMatch[1] : 'Others';
+                teamName = teamName.charAt(0).toUpperCase() + teamName.slice(1).toLowerCase();
+
+                if (!teams[teamName]) {
+                    teams[teamName] = [];
+                }
+                teams[teamName].push({ ...spec, index: index });
+            });
+
+            // 2. 遍歷分組並生成 HTML 結構
+            Object.keys(teams).forEach(teamName => {
+                const carsInTeam = teams[teamName];
+
+                // 創建車隊標題
+                const header = document.createElement('div');
+                header.className = 'team-header';
+                header.textContent = teamName + ' Team'; 
+                container.appendChild(header);
+
+                // 創建車輛列表容器 (一行四個，左對齊)
+                const ul = document.createElement('ul');
+                ul.className = 'car-list-container';
+
+                carsInTeam.forEach(car => {
+                    const li = document.createElement('li');
+                    li.setAttribute('data-index', car.index);
+                    
+                    // 圖像元素
+                    const img = document.createElement('img');
+                    img.src = car.image; 
+                    img.alt = car.image; 
+                    
+                    // 簡單的車名顯示 
+                    const baseName = car.image.split('/').pop().replace('.png', '').replace(/_/g, ' ');
+                    const carName = document.createElement('p');
+                    carName.textContent = baseName;
+                    carName.style.fontSize = '12px';
+                    carName.style.margin = '5px 0 0';
+                    carName.style.color = '#ccc';
+                    carName.style.fontFamily = 'Rajdhani, sans-serif';
+
+                    li.appendChild(img);
+                    li.appendChild(carName);
+                    
+                    // 處理選中狀態的點擊事件
+                    li.onclick = () => {
+                        const selectedIndex = parseInt(li.getAttribute('data-index'));
+                        selectedCar = selectedIndex; 
+                        
+                        // 更新所有車輛的選中狀態
+                        document.querySelectorAll('.car-list-container li').forEach(item => {
+                            item.classList.remove('selected');
+                        });
+                        li.classList.add('selected');
+                    };
+
+                    // 設置預設選中狀態 
+                    if (car.index === selectedCar) {
+                        li.classList.add('selected');
+                    }
+
+                    ul.appendChild(li);
+                });
+
+                container.appendChild(ul);
             });
         }
+        // --- [修改] 結束 ---
         
         function startRace() {
             allCars = [];
@@ -939,6 +1057,7 @@
             requestAnimationFrame(loop);
         }
         
+        
         // 事件監聽器
         window.addEventListener('load', () => {
 			sandPattern = createSandPattern();
@@ -965,7 +1084,7 @@
             
             document.getElementById('confirmBtn').onclick = () => {
                 document.getElementById('carMenu').classList.remove('active');
-                playerCarImg.src = CARSPECS[selectedCar].image;
+                playerCarImg.src = CARSPECS[selectedCar].image; // 修正路徑
                 playerCarImg.onload = startRace;
             };
             
