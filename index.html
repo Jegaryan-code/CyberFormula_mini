@@ -346,6 +346,7 @@
         let keys = {}, touch = {}, lap = 0, totalLaps = 3, raceFinished = false, currentTrack = 0;
         let boostParticles = []; // 加速特效粒子
 		let tireMarks = [];      // 新增：胎痕/飄移痕跡
+		let dustParticles = [];  // 新增：塵土粒子
 		
 		// 在 init 或 script 開頭加入這個變數
 		let sandPattern = null;
@@ -455,40 +456,35 @@
 		}
         
 		// 導入完整的飄移物理模型
-		function updateCarPhysics(car, acceleration, steeringAngle) {
-			// 1. 轉向角度限制
-			steeringAngle = Math.max(-0.4, Math.min(steeringAngle, 0.4));
-			
-			// 2. 應用加速度 (forwardSpeed 是車頭指向的速度)
-			car.forwardSpeed = (car.forwardSpeed || car.speed) + acceleration;
-
-			// 3. 車速限制
-			const maxSpeed = 32; 
-			car.forwardSpeed = Math.max(-10, Math.min(car.forwardSpeed, maxSpeed));
-
-			// 4. 轉向與前進速度
-			// 【修正 1.1：回調旋轉速度 (讓車頭轉向更靈敏，模仿影片入彎效果)】
-			car.angle += steeringAngle * car.forwardSpeed / 20; 
-
-			// 5. 飄移物理 (極端化飄移感)
-			
-			// 【極端修正 1.2：修正側滑摩擦力。0.95 表示側滑速度每幀只損失 5% (產生巨大慣性)】
+		function updateCarPhysics(car, acceleration, steering) {
+			// 保持上次微調後的最佳參數
+			const MAX_SPEED = 23; 
 			const sideFrictionFactor = 0.95; 
+			// 【修正 1：增強甩尾動態 (1.8 -> 2.2)】
+			const sideSpeedGeneration = 2.2; 
 			
-			// 飄移側滑速度生成
+			// 轉向角度限制
+			steering = Math.max(-0.4, Math.min(steering, 0.4));
+			
+			car.forwardSpeed = (car.forwardSpeed || car.speed || 0) + acceleration;
+			car.forwardSpeed = Math.max(-10, Math.min(car.forwardSpeed, MAX_SPEED));
+
+			// 車輛旋轉 (Car Rotation)
+			car.angle += steering * car.forwardSpeed / 10; 
+
+			// 飄移物理 (Drift Physics)
 			car.sideSpeed = car.sideSpeed || 0;
-			if(Math.abs(steeringAngle) > 0.01) {
-				// 【極端修正 1.3：極端提升側滑速度生成率 (2.0)】
-				car.sideSpeed += car.forwardSpeed * steeringAngle * 2.0; 
+			if(Math.abs(steering) > 0.01) {
+				// 側滑方向反轉 (維持車尾向外甩的效果)
+				car.sideSpeed -= car.forwardSpeed * steering * sideSpeedGeneration; 
 			}
 			
-			// 應用側滑摩擦力 (這將賦予車輛強烈的甩尾慣性)
 			car.sideSpeed *= sideFrictionFactor; 
 			
-			// 6. 空氣阻力/減速 
-			car.forwardSpeed *= 0.99;
+			// 阻力
+			car.forwardSpeed *= 0.992; 
 			
-			// 7. 將 forwardSpeed 和 sideSpeed 轉換為實際的 X/Y 移動
+			// 轉換為實際的 X/Y 移動
 			const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
 			const driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
 			const actualAngle = car.angle + driftAngle;
@@ -496,8 +492,8 @@
 			car.x += Math.cos(actualAngle) * totalSpeed;
 			car.y += Math.sin(actualAngle) * totalSpeed;
 			
-			car.speed = totalSpeed;
-			car.driftAngle = driftAngle;
+			car.speed = totalSpeed; 
+			car.driftAngle = driftAngle; 
 		}
 
 		// 3. HUD 升級：繪製類比儀表板
@@ -1128,6 +1124,38 @@
 				}
 			}
         
+		function emitDustForCar(car, isPlayer) {
+			const MAX_SPEED = 23; 
+			const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.6; 
+			// 【修正 2.1：放寬側滑閾值 (1.0 -> 0.3)】
+			const TIRE_MARK_THRESHOLD = 0.3; 
+			
+			// 塵土觸發條件 (與胎痕相同)
+			const isDrifting = car.speed > DRIFT_SPEED_THRESHOLD && Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD;
+			
+			if (!isDrifting) return;
+			
+			const REAR_OFFSET = CARHEIGHT / 2;
+			const rearX = car.x + Math.cos(car.angle + Math.PI) * REAR_OFFSET;
+			const rearY = car.y + Math.sin(car.angle + Math.PI) * REAR_OFFSET;
+			
+			// 根據側滑方向決定塵土噴發方向
+			const sideDirection = car.sideSpeed > 0 ? 1 : -1;
+			
+			for (let i = 0; i < 4; i++) {
+				dustParticles.push({
+					x: rearX + (Math.random() - 0.5) * 15,
+					y: rearY + (Math.random() - 0.5) * 15,
+					// 速度方向：稍微向後，並沿著側滑方向噴發
+					vx: -Math.cos(car.angle) * 1 + Math.cos(car.angle + Math.PI / 2) * sideDirection * (1 + Math.random() * 2),
+					vy: -Math.sin(car.angle) * 1 + Math.sin(car.angle + Math.PI / 2) * sideDirection * (1 + Math.random() * 2),
+					life: 30, 
+					maxLife: 30
+				});
+			}
+		}
+		
+		
 		function loop() {
 			// 使用沙地 Pattern 填滿背景，解決透明格問題
 			if (sandPattern) {
@@ -1151,23 +1179,34 @@
 			drawCurrentTrackRoad(ctx, offsetX, offsetY);
 			drawStartGrid(ctx, TRACKS[currentTrack], SCALE, offsetX, offsetY);
 
-			// 【關鍵修正 2：繪製胎痕 (改為線段繪製，實現連續性)】
+			// 繪製胎痕 (線段繪製)
 			ctx.save();
 			tireMarks.forEach(mark => {
-				// 胎痕在最後一秒才淡出
 				const alpha = Math.min(1, mark.life / 60); 
-				const size = 10; // 胎痕寬度 (維持您想要的粗度)
+				const size = 10; 
 				
-				// 設置線條樣式
 				ctx.strokeStyle = `rgba(0, 0, 0, ${0.8 * alpha})`; 
-				ctx.lineWidth = size; // 設定線寬
-				ctx.lineCap = 'round'; // 使線段連接處平滑
+				ctx.lineWidth = size; 
+				ctx.lineCap = 'round'; 
 				
 				ctx.beginPath();
-				// 繪製線段：連接上一個位置 (x1, y1) 和當前位置 (x2, y2)
 				ctx.moveTo(mark.x1 - offsetX, mark.y1 - offsetY);
 				ctx.lineTo(mark.x2 - offsetX, mark.y2 - offsetY);
-				ctx.stroke(); // 繪製線條
+				ctx.stroke(); 
+			});
+			ctx.restore();
+			
+			// 繪製塵土特效
+			ctx.save();
+			dustParticles.forEach(p => {
+				const alpha = p.life / p.maxLife;
+				const size = alpha * 10; 
+				const color = `rgba(180, 180, 180, ${alpha * 0.6})`; 
+				
+				ctx.fillStyle = color;
+				ctx.beginPath();
+				ctx.arc(p.x - offsetX, p.y - offsetY, size / 2, 0, Math.PI * 2);
+				ctx.fill();
 			});
 			ctx.restore();
 			
@@ -1184,19 +1223,30 @@
 				
 				// AI邏輯更新
 				if (gameState === 'racing' && !raceFinished) {
-					allCars.forEach(followWaypoints);
 					
-					// 粒子/加速特效條件
-					const MAX_SPEED = 23; 
-					const PLAYER_BOOST_THRESHOLD = MAX_SPEED * 0.8; // 18.4 (80% Max Speed)
-
-					// AI 加速特效
+					// 由於 AI 物理已移至 updateCarPhysics，這裡只需計算輸入
 					allCars.forEach(car => {
-						const AI_MAX_SPEED = (24 + Math.random() * 4) * (car.speedFactor || 1); 
+						followWaypoints(car); 
+						
+						// 確保 AI 有加速輸入
+						const AI_ACCEL = 0.038 * (car.spec.acceleration || 1); 
+						const AI_STEERING = car.steeringInput || 0; 
+						
+						// AI 使用新的飄移物理
+						updateCarPhysics(car, AI_ACCEL, AI_STEERING); 
+						
+						// AI 特效
+						const AI_MAX_SPEED = 28 * (car.speedFactor || 1); 
 						const AI_BOOST_THRESHOLD = AI_MAX_SPEED * 0.8; 
 						if (car.speed > AI_BOOST_THRESHOLD) emitBoostForCar(car, false);
+						
+						// AI 塵土特效
+						emitDustForCar(car, false);
 					});
+					
 					// 玩家加速特效
+					const MAX_SPEED = 23; 
+					const PLAYER_BOOST_THRESHOLD = MAX_SPEED * 0.8;
 					if (player.speed > PLAYER_BOOST_THRESHOLD) emitBoostForCar(player, true);
 				}
 						
@@ -1210,13 +1260,21 @@
 				return p.life > 0;
 			});
 
-			// 胎痕壽命更新 (不需要 x/y 更新，因為線段是畫在固定位置)
 			tireMarks = tireMarks.filter(mark => {
 				mark.life--;
 				return mark.life > 0;
 			});
+			
+			dustParticles = dustParticles.filter(p => {
+				p.x += p.vx;
+				p.y += p.vy;
+				p.life--;
+				p.vx *= 0.9; 
+				p.vy *= 0.9;
+				return p.life > 0;
+			});
 
-			// 繪製加速特效 (不再有飄移火花)
+			// 繪製加速特效
 			ctx.save();
 			boostParticles.forEach(p => {
 				const alpha = p.life / p.maxLife;
@@ -1231,6 +1289,7 @@
 			});
 			ctx.restore();
 			
+			
 			// 玩家車輛
 			ctx.save();
 			ctx.translate(W / 2, H / 2);
@@ -1240,7 +1299,7 @@
 			}
 			ctx.restore();
 			
-			// 倒數計時
+			// 倒數計時 (省略不變的邏輯...)
 			if (gameState === 'countdown') {
 					countdown -= 1 / 60;
 					const el = document.getElementById('countdown');
@@ -1268,7 +1327,6 @@
 					// 1. 設置轉向率和加速度
 					const STEERING_RATE = 0.038 * player.spec.handling;
 					const ACCEL_RATE = player.spec.acceleration * 0.035; 
-					const MAX_SPEED = 23; 
 					
 					let acceleration = 0;
 					let steering = 0;
@@ -1278,56 +1336,18 @@
 					if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
 					if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
 
-					// --- 高級飄移物理模型 ---
-					
-					// 轉向角度限制
-					steering = Math.max(-0.4, Math.min(steering, 0.4));
-					
-					// 應用加速度 (forwardSpeed 是車頭指向的速度)
-					player.forwardSpeed = (player.forwardSpeed || player.speed || 0) + acceleration;
-
-					// 車速限制
-					player.forwardSpeed = Math.max(-10, Math.min(player.forwardSpeed, MAX_SPEED));
-
-					// 車輛旋轉
-					player.angle += steering * player.forwardSpeed / 10; 
-
-					// 飄移物理
-					const sideFrictionFactor = 0.95; 
-					const sideSpeedGeneration = 1.8; 
-					
-					// 飄移側滑速度生成
-					player.sideSpeed = player.sideSpeed || 0;
-					if(Math.abs(steering) > 0.01) {
-						player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration; 
-					}
-					
-					// 應用側滑摩擦力
-					player.sideSpeed *= sideFrictionFactor; 
-					
-					// 阻力
-					player.forwardSpeed *= 0.992; 
-					
-					// 轉換為實際的 X/Y 移動
-					const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
-					const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
-					const actualAngle = player.angle + driftAngle;
-
-					player.x += Math.cos(actualAngle) * totalSpeed;
-					player.y += Math.sin(actualAngle) * totalSpeed;
-					
-					player.speed = totalSpeed; // 實際移動速度
-					player.driftAngle = driftAngle; 
+					// 玩家使用新的飄移物理
+					updateCarPhysics(player, acceleration, steering);
 
 					// --- 胎痕生成 ---
-					// 【修正 1.1：提高漂移速度閾值】
-					const DRIFT_SPEED_THRESHOLD = 18; // 75% of MAX_SPEED (23)
-					// 【修正 1.2：提高側滑閾值】
-					const TIRE_MARK_THRESHOLD = 1.0; 
+					const MAX_SPEED = 23; 
+					const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.6; // 60% 極速 (13.8)
+					// 【修正 2.2：放寬側滑閾值 (1.0 -> 0.3)】
+					const TIRE_MARK_THRESHOLD = 0.3; 
 					
 					const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
 
-					// 計算當前輪胎位置 (無論是否飄移，都需要計算)
+					// 計算當前輪胎位置 (省略不變的邏輯...)
 					const rearX = player.x + Math.cos(player.angle + Math.PI) * (CARHEIGHT / 2);
 					const rearY = player.y + Math.sin(player.angle + Math.PI) * (CARHEIGHT / 2);
 					const perpX = Math.cos(player.angle + Math.PI / 2);
@@ -1349,12 +1369,15 @@
 						// 推入線段 (Segment)
 						tireMarks.push({
 							x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
-							life: 180 // 壽命增加到 3 秒
+							life: 180 
 						});
 						tireMarks.push({
 							x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
 							life: 180 
 						});
+						
+						// 玩家塵土特效
+						emitDustForCar(player, true);
 					}
 					
 					// 更新最後位置，供下一幀使用
@@ -1362,7 +1385,7 @@
 					player.lastTireMarkPosR = {x: currentX_R, y: currentY_R};
 
 
-					// 碰撞檢測
+					// 碰撞檢測 (省略不變的邏輯...)
 					if (player.speed > 0) {
 						for (let car of allCars) {
 							checkCollisions(player, car);
@@ -1377,11 +1400,11 @@
 						}
 					}
 				
-					// 更新新的儀表板
+					// 更新新的儀表板 (省略不變的邏輯...)
 					drawDashboard(player.speed);
 					
 					
-					// 完賽檢測
+					// 完賽檢測 (省略不變的邏輯...)
 					const startLineY = TRACKS[currentTrack].start.y * SCALE;
 
 					if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
@@ -1402,7 +1425,7 @@
 					player.prevY = player.y;
 
 					
-					// 更新HUD
+					// 更新HUD (省略不變的邏輯...)
 					const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
 					const pos = sorted.findIndex(c => c === player) + 1;
 					document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
@@ -1416,7 +1439,6 @@
 						
 				requestAnimationFrame(loop);
 		}
-
       
         // 事件監聽器
         window.addEventListener('load', () => {
