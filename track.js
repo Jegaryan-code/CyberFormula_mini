@@ -117,9 +117,3 @@ var TRACKS = [
 
 // 一定要加這行！讓我們永遠有原始中心線可用
 TRACKS.forEach(track => track._originalWaypoints = [...track.waypoints]);
-
-
-
-
-
-
