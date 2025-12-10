@@ -1132,7 +1132,7 @@
 			if (isPlayer) {
 				DRIFT_SPEED_THRESHOLD = carMaxSpeed * 0.6; 
 			} else {
-				// AI 的特效需要極低速度 (40%) 就能觸發，以應對過彎減速
+				// AI 的特效需要極低速度 (40%) 就能觸發
 				DRIFT_SPEED_THRESHOLD = carMaxSpeed * 0.4; 
 			}
 			
@@ -1225,109 +1225,133 @@
 					ctx.restore();
 				});
 				
-				// AI邏輯更新
-				if (gameState === 'racing' && !raceFinished) {
+			// AI邏輯更新
+			if (gameState === 'racing' && !raceFinished) {
+				
+				// AI 獨立摩擦力設定
+				const FORWARD_DAMPING_AI = 0.995; 
+
+				allCars.forEach(car => {
 					
-					// 獨立的摩擦力設定
-					const FORWARD_DAMPING_AI = 0.995; 
-
-					allCars.forEach(car => {
-						// 1. 取得 AI 輸入 (來自 followWaypoints)
-						followWaypoints(car); 
-						
-						// AI 極限調整 (使用您最終的設定)
-						const AI_MAX_SPEED = 11.0; 
-						const AI_ACCEL_BASE = 0.005; 
-						
-						let acceleration = AI_ACCEL_BASE * (car.spec.acceleration || 1); 
-						let steering = car.steeringInput || 0; 
-						
-						// 強制 AI 甩尾 - 放大轉向輸入 2.0 倍
-						steering *= 2.0; 
-						
-						// ---------------------
-						// --- 內聯 AI 飄移物理 ---
-						// ---------------------
-						const sideFrictionFactor = 0.95; 
-						const sideSpeedGeneration = 3.0; // 極強的飄移力度
-						
-						// 擴大 AI 轉向鎖定限制，允許更暴力的轉向，從而強制甩尾
-						const AI_STEERING_LIMIT = 1.8; 
-						steering = Math.max(-AI_STEERING_LIMIT, Math.min(steering, AI_STEERING_LIMIT));
-						
-						car.forwardSpeed = (car.forwardSpeed || car.speed || 0) + acceleration;
-						car.forwardSpeed = Math.max(-10, Math.min(car.forwardSpeed, AI_MAX_SPEED));
-						car.angle += steering * car.forwardSpeed / 10; 
-						
-						car.sideSpeed = car.sideSpeed || 0;
-						if(Math.abs(steering) > 0.01) {
-							car.sideSpeed -= car.forwardSpeed * steering * sideSpeedGeneration; 
-						}
-						car.sideSpeed *= sideFrictionFactor; 
-						car.forwardSpeed *= FORWARD_DAMPING_AI; // AI 阻尼
-						
-						const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
-						const driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
-						const actualAngle = car.angle + driftAngle;
-
-						car.x += Math.cos(actualAngle) * totalSpeed;
-						car.y += Math.sin(actualAngle) * totalSpeed;
-						
-						car.speed = totalSpeed; 
-						car.driftAngle = driftAngle; 
-						
-						
-						// ---------------------
-						// --- 內聯 AI 胎痕/塵土生成 ---
-						// ---------------------
-						const TIRE_MARK_THRESHOLD = 1.0; 
-						const DRIFT_SPEED_THRESHOLD = AI_MAX_SPEED * 0.4; 
-						
-						const isDrifting = car.speed > DRIFT_SPEED_THRESHOLD && Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD;
-
-						const rearX = car.x + Math.cos(car.angle + Math.PI) * (CARHEIGHT / 2);
-						const rearY = car.y + Math.sin(car.angle + Math.PI) * (CARHEIGHT / 2);
-						const perpX = Math.cos(car.angle + Math.PI / 2);
-						const perpY = Math.sin(car.angle + Math.PI / 2);
-						const lateralOffset = CARWIDTH / 2 * 0.7; 
-						
-						const currentX_L = rearX + perpX * lateralOffset;
-						const currentY_L = rearY + perpY * lateralOffset;
-						const currentX_R = rearX - perpX * lateralOffset;
-						const currentY_R = rearY - perpY * lateralOffset;
-
-						const lastX_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.x : currentX_L;
-						const lastY_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.y : currentY_L;
-						const lastX_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.x : currentX_R;
-						const lastY_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.y : currentY_R;
-
-						if (isDrifting) {
-							tireMarks.push({
-								x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
-								life: 180 
-							});
-							tireMarks.push({
-								x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
-								life: 180 
-							});
-							
-							emitDustForCar(car, false, AI_MAX_SPEED);
-						}
-						
-						car.lastTireMarkPosL = {x: currentX_L, y: currentY_L};
-						car.lastTireMarkPosR = {x: currentX_R, y: currentY_R};
-						
-						// AI 加速特效
-						const AI_BOOST_THRESHOLD = AI_MAX_SPEED * 0.8; 
-						if (car.speed > AI_BOOST_THRESHOLD) emitBoostForCar(car, false);
-					});
+					// 1. 記錄執行 followWaypoints 之前的角度
+					const prevAngle = car.angle;
 					
-					// 玩家加速特效
-					const MAX_SPEED = 25; // 玩家極速提高
-					const PLAYER_BOOST_THRESHOLD = MAX_SPEED * 0.8;
-					if (player.speed > PLAYER_BOOST_THRESHOLD) emitBoostForCar(player, true);
-				}
+					// 2. 取得 AI 輸入 (來自 followWaypoints，會更新 car.angle, car.speed)
+					// 注意：car.x 和 car.y 的更新已從 followWaypoints 移除，改由下面的飄移物理處理
+					followWaypoints(car); 
+					
+					// 3. *** 關鍵修正：基於角度變化計算轉向力度 ***
+					
+					// 計算實際轉彎率 (Angular Change)
+					let rawTurnRate = car.angle - prevAngle;
+
+					// 處理角度環繞 (例如從 359度到 1度)
+					if (rawTurnRate > Math.PI) rawTurnRate -= 2 * Math.PI;
+					if (rawTurnRate < -Math.PI) rawTurnRate += 2 * Math.PI;
+					
+					// 轉向輸入 (即時轉向變化)
+					let steering = rawTurnRate; 
+					
+					// 如果轉彎率極小，視為直行
+					if (Math.abs(steering) < 0.0001) {
+						steering = 0;
+					} else {
+						// *** 暴力放大轉向輸入，強制甩尾 ***
+						steering *= 200.0; 
+					}
+
+					
+					// ---------------------
+					// --- AI 飄移物理：決定實際位置 ---
+					// ---------------------
+					const sideFrictionFactor = 0.95; 
+					const sideSpeedGeneration = 1.0; 
+					
+					car.forwardSpeed = car.speed || 0; 
+					car.sideSpeed = car.sideSpeed || 0;
+					
+					// 強制觸發甩尾物理：只要有轉向意圖 (steering != 0) 就一定會產生側滑速度
+					if (Math.abs(steering) > 0) {
+						 // 修正：使用更小的側滑速度，並確保轉向越猛側滑越多
+						 car.sideSpeed -= car.forwardSpeed * steering * sideSpeedGeneration * 0.1; 
+					}
+					
+					// 應用側滑摩擦力
+					car.sideSpeed *= sideFrictionFactor; 
+					
+					// 應用前進阻力
+					car.forwardSpeed *= FORWARD_DAMPING_AI; 
+					
+					// 轉換為實際的 X/Y 移動
+					const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
+					const driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
+					// 核心修正：使用 AI 導航後的角度 + 飄移角度來計算移動
+					const actualAngle = car.angle + driftAngle; 
+
+					// 這裡負責更新 AI 車輛的位置
+					car.x += Math.cos(actualAngle) * totalSpeed;
+					car.y += Math.sin(actualAngle) * totalSpeed;
+					
+					car.speed = totalSpeed; // 更新實際移動速度
+					car.driftAngle = driftAngle; 
+					
+					
+					// ---------------------
+					// --- 內聯 AI 胎痕/塵土生成 ---
+					// ---------------------
+					const TIRE_MARK_THRESHOLD = 1.0; 
+					const AI_MAX_SPEED = 10.0; 
+					const DRIFT_SPEED_THRESHOLD = AI_MAX_SPEED * 0.2; 
+					
+					const isDrifting = car.speed > DRIFT_SPEED_THRESHOLD && Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD;
+
+					const rearX = car.x + Math.cos(car.angle + Math.PI) * (CARHEIGHT / 2);
+					const rearY = car.y + Math.sin(car.angle + Math.PI) * (CARHEIGHT / 2);
+					const perpX = Math.cos(car.angle + Math.PI / 2);
+					const perpY = Math.sin(car.angle + Math.PI / 2);
+					const lateralOffset = CARWIDTH / 2 * 0.7; 
+					
+					const currentX_L = rearX + perpX * lateralOffset;
+					const currentY_L = rearY + perpY * lateralOffset;
+					const currentX_R = rearX - perpX * lateralOffset;
+					const currentY_R = rearY - perpY * lateralOffset;
+
+					const lastX_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.x : currentX_L;
+					const lastY_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.y : currentY_L;
+					const lastX_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.x : currentX_R;
+					const lastY_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.y : currentY_R;
+
+					if (isDrifting) {
+						// 修正 1：胎痕壽命縮短到 60 幀 (約 1 秒)
+						const TIRE_MARK_LIFE = 60; 
+
+						tireMarks.push({
+							x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
+							life: TIRE_MARK_LIFE 
+						});
+						tireMarks.push({
+							x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
+							life: TIRE_MARK_LIFE 
+						});
 						
+						emitDustForCar(car, false, AI_MAX_SPEED);
+					}
+					
+					// 修正 2：修正上次左輪位置的儲存錯誤（原始代碼中是 car.lastTireMarkPosL = {x: currentX_L, y: currentX_L};，Y 座標錯誤）
+					car.lastTireMarkPosL = {x: currentX_L, y: currentY_L};
+					car.lastTireMarkPosR = {x: currentX_R, y: currentY_R};
+					
+					// AI 加速特效
+					const AI_BOOST_THRESHOLD = AI_MAX_SPEED * 0.8; 
+					if (car.speed > AI_BOOST_THRESHOLD) emitBoostForCar(car, false);
+				});
+				
+				// 玩家加速特效
+				const MAX_SPEED = 25; // 玩家極速
+				const PLAYER_BOOST_THRESHOLD = MAX_SPEED * 0.8;
+				if (player.speed > PLAYER_BOOST_THRESHOLD) emitBoostForCar(player, false); // 修正：AI 和玩家共用 emitBoostForCar (isPlayer=false, 因為玩家特效在外面處理)
+			}
+					
 			
 			// 更新粒子和胎痕
 			boostParticles = boostParticles.filter(p => {
@@ -1340,6 +1364,7 @@
 
 			tireMarks = tireMarks.filter(mark => {
 				mark.life--;
+				// 修正 1：胎痕繪製時也使用 60 幀的 alpha 計算
 				return mark.life > 0;
 			});
 			
@@ -1403,11 +1428,11 @@
 					player.raceTime++; 
 					
 					// 獨立的摩擦力設定
-					const FORWARD_DAMPING_PLAYER = 0.998; // 極低的摩擦力
+					const FORWARD_DAMPING_PLAYER = 0.999; 
 
 					// 1. 設置轉向率和加速度
 					const STEERING_RATE = 0.038 * player.spec.handling;
-					const ACCEL_RATE = player.spec.acceleration * 0.040; 
+					const ACCEL_RATE = player.spec.acceleration * 0.060; 
 					const MAX_SPEED = 25; 
 					
 					let acceleration = 0;
@@ -1418,37 +1443,27 @@
 					if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
 					if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
 
-					// --- 玩家【高級飄移物理模型】 ---
+					// --- 玩家【高級飄移物理模型】---
 					
-					// 轉向角度限制 (維持標準)
 					steering = Math.max(-0.4, Math.min(steering, 0.4));
 					
-					// 應用加速度 (forwardSpeed 是車頭指向的速度)
 					player.forwardSpeed = (player.forwardSpeed || player.speed || 0) + acceleration;
-
-					// 車速限制
 					player.forwardSpeed = Math.max(-10, Math.min(player.forwardSpeed, MAX_SPEED));
 
-					// 車輛旋轉
 					player.angle += steering * player.forwardSpeed / 10; 
 
 					// 飄移物理
 					const sideFrictionFactor = 0.95; 
 					const sideSpeedGeneration = 1.8; 
 					
-					// 飄移側滑速度生成
 					player.sideSpeed = player.sideSpeed || 0;
-					if(Math.abs(steering) > 0.01) {
+					if(Math.abs(steering) > 0.01) { 
 						player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration; 
 					}
 					
-					// 應用側滑摩擦力
 					player.sideSpeed *= sideFrictionFactor; 
-					
-					// 阻力 (玩家專屬低阻力)
 					player.forwardSpeed *= FORWARD_DAMPING_PLAYER; 
 					
-					// 轉換為實際的 X/Y 移動
 					const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
 					const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
 					const actualAngle = player.angle + driftAngle;
@@ -1456,16 +1471,15 @@
 					player.x += Math.cos(actualAngle) * totalSpeed;
 					player.y += Math.sin(actualAngle) * totalSpeed;
 					
-					player.speed = totalSpeed; // 實際移動速度
+					player.speed = totalSpeed; 
 					player.driftAngle = driftAngle; 
 
 					// --- 胎痕/塵土生成 (玩家) ---
 					const TIRE_MARK_THRESHOLD = 1.0; 
-					const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.6; // 15.0
+					const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.6; 
 					
 					const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
 
-					// 計算當前輪胎位置 (無論是否飄移，都需要計算)
 					const rearX = player.x + Math.cos(player.angle + Math.PI) * (CARHEIGHT / 2);
 					const rearY = player.y + Math.sin(player.angle + Math.PI) * (CARHEIGHT / 2);
 					const perpX = Math.cos(player.angle + Math.PI / 2);
@@ -1477,32 +1491,33 @@
 					const currentX_R = rearX - perpX * lateralOffset;
 					const currentY_R = rearY - perpY * lateralOffset;
 
-					// 初始化或取得上一個位置
 					const lastX_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.x : currentX_L;
 					const lastY_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.y : currentY_L;
 					const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R;
 					const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
 
 					if (isDrifting) {
-						// 推入線段 (Segment)
+						// 修正 1：胎痕壽命縮短到 60 幀 (約 1 秒)
+						const TIRE_MARK_LIFE = 60; 
+
 						tireMarks.push({
 							x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
-							life: 180 
+							life: TIRE_MARK_LIFE 
 						});
 						tireMarks.push({
 							x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
-							life: 180 
+							life: TIRE_MARK_LIFE
 						});
 						
 						emitDustForCar(player, true, MAX_SPEED);
 					}
 					
-					// 更新最後位置，供下一幀使用
+					// 修正 2：修正上次左輪位置的儲存錯誤（原始代碼中是 player.lastTireMarkPosL = {x: currentX_L, y: currentX_L};，Y 座標錯誤）
 					player.lastTireMarkPosL = {x: currentX_L, y: currentY_L};
 					player.lastTireMarkPosR = {x: currentX_R, y: currentY_R};
 
 
-					// 碰撞檢測 (省略不變的邏輯...)
+					// 碰撞檢測 
 					if (player.speed > 0) {
 						for (let car of allCars) {
 							checkCollisions(player, car);
@@ -1517,11 +1532,10 @@
 						}
 					}
 				
-					// 更新新的儀表板 (省略不變的邏輯...)
 					drawDashboard(player.speed);
 					
 					
-					// 完賽檢測 (省略不變的邏輯...)
+					// 完賽檢測
 					const startLineY = TRACKS[currentTrack].start.y * SCALE;
 
 					if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
@@ -1542,12 +1556,11 @@
 					player.prevY = player.y;
 
 					
-					// 更新HUD (省略不變的邏輯...)
+					// 更新HUD
 					const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
 					const pos = sorted.findIndex(c => c === player) + 1;
 					document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
 					document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
-					document.getElementById('speedHud').textContent = `${Math.round(Math.abs(player.speed) * 10)} kmh`;
 				}
 				
 				if (gameState !== 'title') {
@@ -1556,6 +1569,7 @@
 						
 				requestAnimationFrame(loop);
 		}
+
       
         // 事件監聽器
         window.addEventListener('load', () => {
