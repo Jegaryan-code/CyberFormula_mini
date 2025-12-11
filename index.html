@@ -1111,7 +1111,7 @@
 		function emitBoostForCar(car, isPlayer) {
 
 			// 生成火焰粒子
-				for (let i = 0; i < 4; i++) { // 增加粒子數量到 4 讓效果更明顯
+				for (let i = 0; i < 2; i++) { // 增加粒子數量到 4 讓效果更明顯
 					boostParticles.push({
 						x: car.x + Math.cos(car.angle + Math.PI) * 40,
 						y: car.y + Math.sin(car.angle + Math.PI) * 40,
@@ -1466,7 +1466,7 @@
 					player.driftAngle = driftAngle; 
 
 					// --- 胎痕/塵土生成 (玩家) ---
-					const TIRE_MARK_THRESHOLD = 1.0; 
+					const TIRE_MARK_THRESHOLD = 8.0; 
 					const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.6; 
 					
 					const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
