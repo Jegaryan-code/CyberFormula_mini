@@ -390,7 +390,6 @@ try {
 		  }
 		}
 
-		// 改進的AI超車邏輯
 		function followWaypoints(car) {
 		  if (car.waypointIndex == null) car.waypointIndex = 0;
 		  const wp = TRACKS[currentTrack].waypoints;
@@ -407,36 +406,51 @@ try {
 		  let dirY = ny - ty;
 		  const len = Math.hypot(dirX, dirY) || 1;
 		  dirX /= len; dirY /= len;
+
+		  // 正向 & 橫向
 		  const nX = -dirY;
 		  const nY = dirX;
 
-		  const baseOffset = car.laneOffset || 0; // 基礎的左右偏移 (例如 +60 或 -60)
+		  const baseOffset = car.laneOffset || 0; // 例如 +60 / -60
 
-		  // --- 1. 找前車 ---
+		  // ---------------------------
+		  // 1. 找最近「前面」那架車
+		  // ---------------------------
 		  let frontCar = null;
 		  let minDist = Infinity;
 		  const candidates = [...allCars, player].filter(c => c !== car);
+
 		  candidates.forEach(other => {
 			const dx = other.x - car.x;
 			const dy = other.y - car.y;
 			const dist = Math.hypot(dx, dy);
-			const rel = dx * dirX + dy * dirY;   // 前後
-			if (rel > 0 && dist < 260 && dist < minDist) {
+			const rel = dx * dirX + dy * dirY;   // 正向投影：>0 = 在前面
+
+			if (rel > 0 && dist < 400 && dist < minDist) {
 			  minDist = dist;
 			  frontCar = other;
 			}
 		  });
 
-		  // --- 2. 決定有冇進入 overtake 模式 ---
-		  const wantOvertake = frontCar &&
-			minDist < 280 &&                    // 幾近
-			car.forwardSpeed > (frontCar.forwardSpeed || 0) + 1;  // 明顯快過前面 (使用 forwardSpeed)
+		  // ---------------------------
+		  // 2. 判斷是否進入「超車模式」
+		  // ---------------------------
+		  const wantOvertake =
+			frontCar &&
+			minDist < 300 &&                                // 幾近
+			(car.forwardSpeed || 0) >
+			  (frontCar.forwardSpeed || 0) + 1.0;          // 真係快過前車
+
+		  if (car.overtakeTimer == null) car.overtakeTimer = 0;
+		  if (car.overtakeSide == null) car.overtakeSide = 0;
 
 		  if (car.overtakeTimer <= 0 && wantOvertake) {
-			// 開始一個 1~2 秒嘅超車窗口
-			car.overtakeTimer = 60 + Math.random() * 60;
-			// 決定超車方向: 盡量向著前車冇嘅方向
-			const sideRaw = Math.sign((frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY);
+			// 開始 1~2 秒的超車窗口
+			car.overtakeTimer = 90 + Math.random() * 60;
+
+			// 優先向「沒有車」那邊閃
+			const lateral = (frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY;
+			const sideRaw = Math.sign(lateral);
 			car.overtakeSide = sideRaw === 0 ? (Math.random() < 0.5 ? -1 : 1) : sideRaw;
 		  }
 
@@ -446,23 +460,40 @@ try {
 			car.overtakeSide = 0;
 		  }
 
-		  // --- 3. 計最終 targetOffset ---
-		  let targetOffset = baseOffset; 
-		  const AVOID_OFFSET = 150;
-		  const OVERTAKE_OFFSET = 400; 
+		  // ---------------------------
+		  // 3. 橫向目標 offset（明顯拉開）
+		  // ---------------------------
+		  const AVOID_OFFSET    = 180;  // 一般避撞
+		  const OVERTAKE_OFFSET = 420;  // 超車時拉到外線
+
+		  let targetOffset = baseOffset;
 
 		  if (car.overtakeSide !== 0) {
+			// 超車中：直接去內／外線（± OVERTAKE_OFFSET）
 			targetOffset = baseOffset + car.overtakeSide * OVERTAKE_OFFSET;
-		  } else if (frontCar && minDist < 280) {
-			const side = Math.sign((frontCar.x - car.x) * nX + (frontCar.y - frontCar.y) * nY) || 1;
+		  } else if (frontCar && minDist < 260) {
+			// 非超車，但距離好近 → 輕微避開
+			const lateral = (frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY;
+			const side = Math.sign(lateral) || 1;
 			targetOffset = baseOffset + side * AVOID_OFFSET;
 		  }
 
-		  // 平滑過渡到 targetOffset
-		  car.currentOffset = car.currentOffset || baseOffset;
-		  car.currentOffset += (targetOffset - car.currentOffset) * 0.05; 
+		  // 額外：極近距離正中對著就強制閃一邊（防幾架車疊在一起）
+		  if (frontCar && minDist < 180) {
+			const lateral = (frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY;
+			if (Math.abs(lateral) < 40) {
+			  const forceSide = lateral >= 0 ? -1 : 1;
+			  targetOffset = baseOffset + forceSide * (OVERTAKE_OFFSET * 0.9);
+			  car.overtakeSide = forceSide;
+			  car.overtakeTimer = Math.max(car.overtakeTimer, 60);
+			}
+		  }
 
-		  // 使用平滑過渡後的 currentOffset 來計算最終目標點
+		  // 平滑 lerp 到目標 offset
+		  if (car.currentOffset == null) car.currentOffset = baseOffset;
+		  car.currentOffset += (targetOffset - car.currentOffset) * 0.08;
+
+		  // 最終追蹤的目標點
 		  const targetX = tx + nX * car.currentOffset;
 		  const targetY = ty + nY * car.currentOffset;
 
@@ -476,32 +507,38 @@ try {
 		  const targetAngle = Math.atan2(dy, dx);
 		  let angleDiff = targetAngle - car.angle;
 		  angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
-		  
-		  // **新：AI 轉向角輸入 (給物理函數用)**
-		  let steeringAngle = angleDiff * 0.25; 
-		  
 
-		  // --- 4. 速度控制 (使用 acceleration 代替直接修改 speed) ---
+		  const steeringAngle = angleDiff * 0.25; // 給物理函數用
+
+		  // ---------------------------
+		  // 4. 速度控制（超車時給 buff）
+		  // ---------------------------
 		  const sf = car.speedFactor || 1;
-		  const maxSpeedBase = (26 + Math.random() * 4) * sf; // **AI 最高速與玩家同步**
+		  const maxSpeedBase = (26 + Math.random() * 4) * sf;
 		  let acceleration = 0;
 
-		  if (frontCar && minDist < 120 && car.overtakeSide === 0) {
-			// 跟車時，如果速度太快，則剎車
+		  const inOvertake = car.overtakeTimer > 0 && car.overtakeSide !== 0;
+
+		  if (frontCar && minDist < 130 && !inOvertake) {
+			// 跟車但未超車 → 不想撞上，偏向減速
 			if (car.forwardSpeed > maxSpeedBase * 0.5) {
-				 acceleration = -3; // 剎車減速
+			  acceleration = -3.0;   // 明顯剎車
 			} else {
-				 acceleration = car.spec.acceleration * 0.03;
+			  acceleration = car.spec.acceleration * 0.03;
 			}
 		  } else {
-			// 正常 / 超車
-			acceleration = car.spec.acceleration * 0.06;
-			if (car.forwardSpeed > maxSpeedBase) {
-				 acceleration = 0; // 達到最高速
+			// 正常行駛 / 超車
+			acceleration = car.spec.acceleration * (inOvertake ? 0.10 : 0.06);
+
+			// 超車中給一點「MaxSpeed buff」
+			const maxSpeed = inOvertake ? maxSpeedBase + 3.0 : maxSpeedBase;
+
+			if (car.forwardSpeed > maxSpeed) {
+			  acceleration = 0; // 不再加速
 			}
 		  }
 
-		  // 呼叫新的物理函數，更新 car 的位置和速度
+		  // 交給統一物理函數處理
 		  updateCarPhysics(car, acceleration, steeringAngle);
 		}
 
