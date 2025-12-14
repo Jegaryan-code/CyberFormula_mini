@@ -4,10 +4,12 @@
 
 console.log('[game.js] 遊戲引擎加載中...');
 
-try {
-
-
-        const SCALE = 5;
+// Main game initialization
+document.addEventListener('DOMContentLoaded', () => {
+        const SCALE = 5.0; // Scale factor for game coordinates to pixels
+        const WORLD_SPEED_SCALE = 0.35;
+        const SPEED_UNIT_SCALE = 34 / 18;
+        const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
         const CARWIDTH = 90;
         const CARHEIGHT = 150;
         
@@ -26,6 +28,34 @@ try {
         let boostParticles = []; // 加速特效粒子
 		let tireMarks = [];      // 新增：胎痕/飄移痕跡
 		let dustParticles = [];  // 新增：塵土粒子
+        
+        // Speed calculation constants
+        const BASE_MAX_SPEED = 30;  // Base max speed for all cars
+        const MAX_SPEED_BONUS = 4;  // Maximum speed bonus from acceleration
+        
+        // Calculate car's max speed based on its specs
+        function getCarMaxSpeed(car) {
+            if (!car.spec) return BASE_MAX_SPEED; // Fallback if no spec
+            
+            // Calculate speed based on acceleration (0-1 range) and scale it
+            // Normalize acceleration to 0-1 range based on min/max values in CARSPECS
+            const minAccel = 4.5;  // Minimum acceleration in CARSPECS
+            const maxAccel = 5.3;  // Maximum acceleration in CARSPECS
+            const normalizedAccel = (car.spec.acceleration - minAccel) / (maxAccel - minAccel);
+            
+            // Calculate speed bonus based on normalized acceleration
+            const speedBonus = normalizedAccel * MAX_SPEED_BONUS;
+            
+            return BASE_MAX_SPEED + speedBonus;
+        }
+        
+        // Boost system variables
+        let isBoosting = false;
+        let boostMeter = 1.0;
+        const BOOST_DRAIN_RATE = 0.003; // Reduced drain rate for longer boost
+        const BOOST_RECHARGE_RATE = 0.0015; // Slightly reduced recharge rate to balance
+        const BOOST_SPEED_MULTIPLIER = 1.4; // 40% speed increase
+        let boostCooldown = 0;
 		
 		// 在 init 或 script 開頭加入這個變數
 		let sandPattern = null;
@@ -35,6 +65,10 @@ try {
 		const MW = miniCanvas.width, MH = miniCanvas.height;
 		let mapScale = 0.5; // Minimap 縮放比例 (會在 loadTrack 時計算)
 		let mapOffsetX = 0, mapOffsetY = 0; // Minimap 繪製偏移量
+		// Add this with other global variables at the top of the file
+		let lastCountdownTime = 0;  // Add this line
+		let countdownInterval = null;
+		let countdownStartTime = 0;		
 		
 		
 		// 新增一個函數：預先產生沙地材質 (只執行一次，效能更好)
@@ -137,13 +171,25 @@ try {
 		// 導入完整的飄移物理模型
 		function updateCarPhysics(car, acceleration, steering) {
 			// 保持上次微調後的最佳參數
-			const MAX_SPEED = 23; 
-			const sideFrictionFactor = 0.95; 
+			const MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 34; 
+			const sideFrictionFactor = (car && car.isAI) ? 0.94 : 0.95; 
 			// 【修正 1：極限甩尾力度 (2.5 -> 3.0)】
-			const sideSpeedGeneration = 3.0; 
+			const sideSpeedGeneration = (car && car.isAI) ? 3.8 : 3.0; 
+			const track = TRACKS[currentTrack];
+			const trackX = track.playerStart.x * SCALE;
+			const trackY = track.playerStart.y * SCALE;
+			const distanceToStart = Math.hypot(player.x - trackX, player.y - trackY);
+			if (distanceToStart > 100) { // If player gets too far from start
+				// Reset player position
+				player.x = trackX;
+				player.y = trackY;
+				player.angle = track.playerStart.angle;
+				player.speed = 0;
+			}
 			
 			// 轉向角度限制
-			steering = Math.max(-0.4, Math.min(steering, 0.4));
+			const steeringClamp = (car && car.isAI) ? 0.6 : 0.4;
+			steering = Math.max(-steeringClamp, Math.min(steering, steeringClamp));
 			
 			car.forwardSpeed = (car.forwardSpeed || car.speed || 0) + acceleration;
 			car.forwardSpeed = Math.max(-10, Math.min(car.forwardSpeed, MAX_SPEED));
@@ -153,23 +199,26 @@ try {
 
 			// 飄移物理 (Drift Physics)
 			car.sideSpeed = car.sideSpeed || 0;
-			if(Math.abs(steering) > 0.01) {
+			const steerDeadzone = (car && car.isAI) ? 0 : 0.01;
+			if (Math.abs(steering) > steerDeadzone) {
+				// AI: 對照舊版，轉向時一定產生側滑，但乘數較小避免過度甩尾
+				const slipMul = (car && car.isAI) ? 0.14 : 1.0;
 				// 側滑方向反轉 (維持車尾向外甩的效果)
-				car.sideSpeed -= car.forwardSpeed * steering * sideSpeedGeneration; 
+				car.sideSpeed -= car.forwardSpeed * steering * sideSpeedGeneration * slipMul;
 			}
 			
 			car.sideSpeed *= sideFrictionFactor; 
 			
 			// 阻力
-			car.forwardSpeed *= 0.992; 
+			car.forwardSpeed *= (car && car.isAI) ? 0.995 : 0.992; 
 			
 			// 轉換為實際的 X/Y 移動
 			const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
 			const driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
 			const actualAngle = car.angle + driftAngle;
 
-			car.x += Math.cos(actualAngle) * totalSpeed;
-			car.y += Math.sin(actualAngle) * totalSpeed;
+			car.x += Math.cos(actualAngle) * totalSpeed * MOVE_SCALE;
+			car.y += Math.sin(actualAngle) * totalSpeed * MOVE_SCALE;
 			
 			car.speed = totalSpeed; 
 			car.driftAngle = driftAngle; 
@@ -240,7 +289,7 @@ try {
 			dashCtx.textAlign = 'center';
 			dashCtx.shadowBlur = 15;
 			dashCtx.shadowColor = '#00ffff';
-			const kmh = Math.round(Math.abs(speed) * 20);
+			const kmh = Math.round(Math.abs(speed) * 15);
 			dashCtx.fillText(kmh, cx, cy - 50);
 			
 			dashCtx.font = '20px Rajdhani';
@@ -508,82 +557,84 @@ try {
 		  let angleDiff = targetAngle - car.angle;
 		  angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
 
-		  const steeringAngle = angleDiff * 0.25; // 給物理函數用
+		  const steeringAngle = angleDiff * 0.28; // 給物理函數用
 
-		  // ---------------------------
-		  // 4. 速度控制（超車時給 buff）
-		  // ---------------------------
-		  const sf = car.speedFactor || 1;
-		  const maxSpeedBase = (26 + Math.random() * 4) * sf;
-		  let acceleration = 0;
+			  // ---------------------------
+			  // 4. 速度控制（超車時給 buff）
+			  // ---------------------------
+			  const speedFactor = (car && typeof car.speedFactor === 'number') ? car.speedFactor : 1.0;
+			  const maxSpeedBase = 26.7 * speedFactor;
+			  const AI_ACCEL_SCALE = 2.0;
+			  let acceleration = 0;
 
 		  const inOvertake = car.overtakeTimer > 0 && car.overtakeSide !== 0;
 
 		  if (frontCar && minDist < 130 && !inOvertake) {
 			// 跟車但未超車 → 不想撞上，偏向減速
-			if (car.forwardSpeed > maxSpeedBase * 0.5) {
-			  acceleration = -3.0;   // 明顯剎車
+			if (car.forwardSpeed > maxSpeedBase * 0.75) {
+				acceleration = -3.0;
 			} else {
-			  acceleration = car.spec.acceleration * 0.03;
+				acceleration = car.spec.acceleration * 0.0055 * AI_ACCEL_SCALE * SPEED_UNIT_SCALE;
 			}
 		  } else {
-			// 正常行駛 / 超車
-			acceleration = car.spec.acceleration * (inOvertake ? 0.10 : 0.06);
+			const turnAmt = Math.min(1, Math.abs(angleDiff) / 0.6);
+			const straightBoost = 1.0 + (1.0 - turnAmt) * 0.25;
+			acceleration = car.spec.acceleration * (inOvertake ? 0.0060 : 0.0052) * AI_ACCEL_SCALE * straightBoost * SPEED_UNIT_SCALE;
 
-			// 超車中給一點「MaxSpeed buff」
-			const maxSpeed = inOvertake ? maxSpeedBase + 3.0 : maxSpeedBase;
+				const maxSpeed = inOvertake ? maxSpeedBase + 0.4 * speedFactor : maxSpeedBase;
+				car.maxSpeedLimit = maxSpeed;
 
-			if (car.forwardSpeed > maxSpeed) {
-			  acceleration = 0; // 不再加速
-			}
+			if (car.forwardSpeed > maxSpeed) acceleration = 0;
 		  }
 
-		  // 交給統一物理函數處理
-		  updateCarPhysics(car, acceleration, steeringAngle);
+		  if (car.maxSpeedLimit == null) car.maxSpeedLimit = maxSpeedBase;
+
+			  // Reduce acceleration during turns for more realistic driving
+	  const isTurning = Math.abs(steeringAngle) > 0.1;  // Check if the car is turning
+	  if (isTurning) {
+		  // Reduce acceleration during turns (to 20% of normal)
+		  acceleration *= 0.2;
+	  }
+
+	  car.lastAIAcceleration = acceleration;
+	  car.lastAISteering = steeringAngle;
+	  updateCarPhysics(car, acceleration, steeringAngle);
 		}
 
-
-        
-        function loadTrack(i) {
-            currentTrack = i;
-            trackImg = new Image();
-            trackImg.onload = () => {
-                document.getElementById('hud').textContent = `TRACK: ${TRACKS[i].name}`;
-            };
-            trackImg.src = TRACKS[i].bgImage;
+		function loadTrack(i) {
+			currentTrack = i;
+			trackImg = new Image();
+			trackImg.onload = () => {
+				document.getElementById('hud').textContent = `TRACK: ${TRACKS[i].name}`;
+			};
+			trackImg.src = TRACKS[i].bgImage;
 			
-			// **【Minimap 修正 1：計算縮放比例與偏移】**
 			const t = TRACKS[i];
 			const waypointsX = t.waypoints.map(w => w.x);
 			const waypointsY = t.waypoints.map(w => w.y);
 			
-			// 找出賽道的最大/最小座標 (單位：像素)
 			const minX = Math.min(...waypointsX) * SCALE;
 			const maxX = Math.max(...waypointsX) * SCALE;
 			const minY = Math.min(...waypointsY) * SCALE;
 			const maxY = Math.max(...waypointsY) * SCALE;
-
+			
 			const trackWidth = maxX - minX;
 			const trackHeight = maxY - minY;
-
-			// 計算縮放比例，以適應 200x200 的 Minimap 空間
+			
 			mapScale = Math.min(
-				(MW - 10) / trackWidth, // 左右留 5px 邊距
-				(MH - 10) / trackHeight // 上下留 5px 邊距
+				(MW - 10) / trackWidth,
+				(MH - 10) / trackHeight
 			);
 			
-			// 計算繪製偏移量，讓地圖居中
 			mapOffsetX = (MW / 2) - ((minX + maxX) / 2) * mapScale;
 			mapOffsetY = (MH / 2) - ((minY + maxY) / 2) * mapScale;
-			
-        }
+		}
 		
-        
-        function openTrackSelect(m) {
-            mode = m;
-            document.getElementById('mainMenu').classList.remove('active');
-            document.getElementById('trackSelect').classList.add('active');
-            const grid = document.getElementById('trackGrid');
+		function openTrackSelect(m) {
+			mode = m;
+			document.getElementById('mainMenu').classList.remove('active');
+			document.getElementById('trackSelect').classList.add('active');
+			const grid = document.getElementById('trackGrid');
             grid.innerHTML = '';
             TRACKS.forEach((t, i) => {
                 const d = document.createElement('div');
@@ -689,55 +740,178 @@ try {
 
         
 		function startRace() {
+			// Clear any existing countdown interval
+			if (countdownInterval) {
+				clearInterval(countdownInterval);
+				countdownInterval = null;
+			}
+
 			allCars = [];
 			const t = TRACKS[currentTrack];
+			const GRID_SPACING = 200;
+			const ROW_SPACING = 120;
+
+			// Make sure we have a valid track
+			if (!t) {
+				console.error('Invalid track:', currentTrack);
+				return;
+			}
+
+			// In the startRace function, after the GRID_SPACING and ROW_SPACING declarations
 			if (mode === 'championship') {
 				const a = CARSPECS.map((_, i) => i).filter(i => i !== selectedCar);
 				const chosen = [];
 				while (chosen.length < 10 && a.length > 0) {
 					chosen.push(a.splice(Math.floor(Math.random() * a.length), 1)[0]);
 				}
+				
 				chosen.forEach((idx, i) => {
 					const img = new Image();
 					img.src = CARSPECS[idx].image;
 					const p = t.gridPositions[i];
+					
 					allCars.push({
-					  x: p.x * SCALE,
-					  y: p.y * SCALE,
-					  angle: t.playerStart.angle, 
-					  // **新增飄移物理屬性**
-					  forwardSpeed: 0, 
-					  sideSpeed: 0,
-					  speed: 0, // 保持為總速度，用於 HUD
-					  spec: CARSPECS[idx],
-					  img: img,
-					  waypointIndex: 0,
-					  overtakeTimer: 0,
-					  overtakeSide: 0,
-					  laneOffset: (i % 2 === 0 ? -60 : 60),
-					  currentOffset: (i % 2 === 0 ? -60 : 60), 
-					  speedFactor: 0.9 + Math.random() * 0.3  
+						isAI: true,
+						x: (p.x * SCALE),
+						y: (p.y * SCALE),
+						angle: t.playerStart.angle,
+						forwardSpeed: 0,
+						sideSpeed: 0,
+						speed: 0,
+						spec: CARSPECS[idx],
+						img: img,
+						waypointIndex: 0,
+						overtakeTimer: 0,
+						overtakeSide: 0,
+						laneOffset: (i % 2 === 0 ? -60 : 60),
+						currentOffset: (i % 2 === 0 ? -60 : 60),
+						speedFlameTimer: 0,
+						speedFactor: 0.95 + Math.random() * 0.12
 					});
 				});
 			}
+			// ... keep all the existing car initialization code ...
+
+			// Initialize player car
+			// In startRace function, update the player initialization:
+			const playerGridPos = (t.gridPositions && t.gridPositions.length)
+				? t.gridPositions[t.gridPositions.length - 1]
+				: t.playerStart;
 			player = {
-				x: t.playerStart.x * SCALE, y: t.playerStart.y * SCALE,
-				angle: t.playerStart.angle , speed: 0,
-				spec: CARSPECS[selectedCar], img: playerCarImg,
+				x: playerGridPos.x * SCALE,
+				y: playerGridPos.y * SCALE,
+				angle: (t.playerStart && t.playerStart.angle != null) ? t.playerStart.angle : -Math.PI / 2,
+				speed: 0,
+				forwardSpeed: 0,
+				sideSpeed: 0,
+				driftAngle: 0,
+				waypointIndex: 0,
+				currentLap: 0,
+				lastCheckpoint: -1,
+				spec: CARSPECS[selectedCar],
+				img: playerCarImg,
 				raceTime: 0,
-                forwardSpeed: 0, // 新增
-                sideSpeed: 0,    // 新增
-                driftAngle: 0    // 新增
+				prevY: playerGridPos.y * SCALE
 			};
-			countdown = 5;
+
+			// Reset countdown and game state
+			countdown = 3; // Start from 3
 			gameState = 'countdown';
+			countdownStartTime = Date.now();
 			lap = 0;
 			totalLaps = 3;
 			raceFinished = false;
-			
 			player.prevY = player.y;
 			document.getElementById('lapHud').textContent = `LAP 0/${totalLaps}`;
+
 			
+			// Start the countdown interval
+			countdownInterval = setInterval(() => {
+				const countdownElement = document.getElementById('countdown');
+				
+				if (!countdownElement) return;
+				
+				countdownElement.style.display = 'block';
+				countdownElement.style.fontSize = '200px';
+				countdownElement.style.color = '#fff';
+				countdownElement.style.textShadow = '0 0 10px #000';
+				
+				if (countdown > 1) {
+					countdownElement.textContent = countdown;
+					countdown--;
+				} else if (countdown === 1) {
+					countdownElement.textContent = 'GO!';
+					countdownElement.style.color = '#0f0';
+					countdown--;
+				} else {
+					// Countdown finished
+					gameState = 'racing';
+					countdownElement.style.display = 'none';
+					clearInterval(countdownInterval);
+					countdownInterval = null;
+					
+					// Force start the game loop
+					if (typeof loop === 'function' && !raceFinished) {
+						requestAnimationFrame(loop);
+					}
+				}
+			}, 1000);
+
+			// Ensure the loop is running during countdown (so it can render)
+			if (typeof loop === 'function') {
+				requestAnimationFrame(loop);
+			}
+		}
+
+		function emitSpeedFlameForCar(car, isPlayer) {
+			console.log('Emitting flame effect:', { 
+				isPlayer, 
+				speed: car.speed, 
+				forwardSpeed: car.forwardSpeed,
+				angle: car.angle 
+			});			
+			const jets = [-1, 1];
+			for (let j = 0; j < jets.length; j++) {
+				const side = jets[j];
+				const baseAngle = car.angle + Math.PI;
+				const angle = baseAngle + (Math.random() - 0.5) * 0.22;
+				const speed = 3.2 + Math.random() * 2.2;
+				const life = 7 + Math.random() * 8;
+				const backOffset = 50 + Math.random() * 8;
+				const sideOffset = side * (CARWIDTH * 0.20);
+				const length = 34 + Math.random() * 14;
+				const width = 6 + Math.random() * 3;
+				boostParticles.push({
+					type: 'flame',
+					x: car.x - Math.cos(car.angle) * backOffset + Math.cos(car.angle + Math.PI / 2) * sideOffset,
+					y: car.y - Math.sin(car.angle) * backOffset + Math.sin(car.angle + Math.PI / 2) * sideOffset,
+					vx: Math.cos(angle) * speed,
+					vy: Math.sin(angle) * speed,
+					angle: baseAngle,
+					length,
+					width,
+					life,
+					maxLife: life,
+					gravity: 0,
+					color: 'rgba(255, 140, 20, 0.75)'
+				});
+			}
+		}
+
+		function emitMoveDustForCar(car) {
+			const REAR_OFFSET = CARHEIGHT / 2;
+			const rearX = car.x + Math.cos(car.angle + Math.PI) * REAR_OFFSET;
+			const rearY = car.y + Math.sin(car.angle + Math.PI) * REAR_OFFSET;
+			for (let i = 0; i < 2; i++) {
+				dustParticles.push({
+					x: rearX + (Math.random() - 0.5) * 18,
+					y: rearY + (Math.random() - 0.5) * 18,
+					vx: -Math.cos(car.angle) * (0.6 + Math.random() * 0.8),
+					vy: -Math.sin(car.angle) * (0.6 + Math.random() * 0.8),
+					life: 22,
+					maxLife: 22
+				});
+			}
 		}
         
         function drawTrackFromWaypoints(ctx, track, scale = 1, offsetX = 0, offsetY = 0) {
@@ -763,83 +937,63 @@ try {
             ctx.restore();
         }
         
-        function drawStartGrid(ctx, track, scale, offsetX, offsetY) {
-            const grid = track.gridPositions;
-            if (!grid || !grid.length || !track.start || !track.playerStart) return;
-            ctx.save();
-            // Start line
-            const sx0 = track.start.x;
-            const sy0 = track.start.y;
-            const px0 = track.playerStart.x;
-            const py0 = track.playerStart.y;
-            let dirX = sx0 - px0;
-            let dirY = sy0 - py0;
-            const len = Math.hypot(dirX, dirY);
-            dirX /= len;
-            dirY /= len;
-            const perpX = -dirY;
-            const perpY = dirX;
-            const sx = sx0 * scale - offsetX;
-            const sy = sy0 * scale - offsetY;
-            const lineLen = 650 * scale;
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 8;
-            ctx.beginPath();
-            ctx.moveTo(sx - perpX * lineLen / 2, sy - perpY * lineLen / 2);
-            ctx.lineTo(sx + perpX * lineLen / 2, sy + perpY * lineLen / 2);
-            ctx.stroke();
-            
-            // Grid positions
-            const boxL = 220;
-            const boxW = 90;
-            ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-            ctx.lineWidth = 4;
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '26px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            grid.forEach((p, idx) => {
-                const gx = p.x * scale - offsetX;
-                const gy = p.y * scale - offsetY;
-                const halfL = boxL / 2;
-                const halfW = boxW / 2;
-                const p1x = gx - halfL * dirX - halfW * perpX;
-                const p1y = gy - halfL * dirY - halfW * perpY;
-                const p2x = gx + halfL * dirX - halfW * perpX;
-                const p2y = gy + halfL * dirY - halfW * perpY;
-                const p3x = gx + halfL * dirX + halfW * perpX;
-                const p3y = gy + halfL * dirY + halfW * perpY;
-                const p4x = gx - halfL * dirX + halfW * perpX;
-                const p4y = gy - halfL * dirY + halfW * perpY;
-                ctx.beginPath();
-                ctx.moveTo(p1x, p1y);
-                ctx.lineTo(p2x, p2y);
-                ctx.lineTo(p3x, p3y);
-                ctx.lineTo(p4x, p4y);
-                ctx.closePath();
-                ctx.stroke();
-                ctx.fillText(idx + 1, gx, gy);
-            });
-            ctx.restore();
-        }
+		function drawStartGrid(ctx, track, scale, offsetX, offsetY) {
+			const grid = track.gridPositions;
+			if (!grid || !grid.length) return;
+
+			ctx.save();
+			ctx.strokeStyle = '#fff';
+			ctx.lineWidth = 3;
+			ctx.setLineDash([10, 5]);
+
+			grid.forEach((pos, i) => {
+				const x = (pos.x * scale) - offsetX;
+				const y = (pos.y * scale) - offsetY;
+
+				ctx.beginPath();
+				ctx.moveTo(x - 50, y);
+				ctx.lineTo(x + 50, y);
+				ctx.stroke();
+
+				ctx.fillStyle = '#fff';
+				ctx.font = '20px Arial';
+				ctx.textAlign = 'center';
+				ctx.fillText(i + 1, x, y - 10);
+			});
+
+			ctx.restore();
+		}
 		
 		// 【修正點 2 & 3: 特效調整與火花修復】
 		function emitBoostForCar(car, isPlayer) {
-
-			// 生成火焰粒子
-				for (let i = 0; i < 2; i++) { // 增加粒子數量到 4 讓效果更明顯
-					boostParticles.push({
-						x: car.x + Math.cos(car.angle + Math.PI) * 40,
-						y: car.y + Math.sin(car.angle + Math.PI) * 40,
-						vx: (Math.random() - 0.5) * 2,
-						vy: (Math.random() - 0.5) * 2 + 1,
-						life: 20, 
-						maxLife: 20,
-						isSpark: false // 標記為非火花
-					});
-				}
+			// 在車尾產生藍色火焰效果
+			const jets = [-1, 1];
+			for (let j = 0; j < jets.length; j++) {
+				const side = jets[j];
+				const baseAngle = car.angle + Math.PI;
+				const angle = baseAngle + (Math.random() - 0.5) * 0.18;
+				const speed = 5.5 + Math.random() * 4.5;
+				const life = 12 + Math.random() * 14;
+				const backOffset = 58 + Math.random() * 10;
+				const sideOffset = side * (CARWIDTH * 0.22);
+				const length = 85 + Math.random() * 35;
+				const width = 10 + Math.random() * 6;
+				boostParticles.push({
+					type: 'flame',
+					x: car.x - Math.cos(car.angle) * backOffset + Math.cos(car.angle + Math.PI / 2) * sideOffset,
+					y: car.y - Math.sin(car.angle) * backOffset + Math.sin(car.angle + Math.PI / 2) * sideOffset,
+					vx: Math.cos(angle) * speed,
+					vy: Math.sin(angle) * speed,
+					angle: baseAngle,
+					length,
+					width,
+					life,
+					maxLife: life,
+					gravity: 0,
+					color: 'rgba(0, 180, 255, 0.85)'
+				});
 			}
-        
+		}
 		function emitDustForCar(car, isPlayer, carMaxSpeed) {
 			const TIRE_MARK_THRESHOLD = 1.0; 
 			let DRIFT_SPEED_THRESHOLD;
@@ -876,477 +1030,623 @@ try {
 		}
 				
 				
+		// Initialize keyboard input handling
+		const handleKeyDown = (e) => {
+			if (e.code === 'Space') {
+				e.preventDefault();
+				if (boostMeter > 0 && boostCooldown <= 0) {
+					isBoosting = true;
+				}
+			} else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+				e.preventDefault();
+				keys[e.key] = true;
+			}
+		};
+
+		const handleKeyUp = (e) => {
+			if (e.code === 'Space') {
+				isBoosting = false;
+			} else if (e.key in keys) {
+				keys[e.key] = false;
+			}
+		};
+
+		// Add event listeners
+		window.addEventListener('keydown', handleKeyDown);
+		window.addEventListener('keyup', handleKeyUp);
+
 		function loop() {
-			// 使用沙地 Pattern 填滿背景，解決透明格問題
+			if (gameState === 'paused' || raceFinished) {
+        		return;
+			}
+			// Clear the canvas with sand pattern or fallback color
 			if (sandPattern) {
 				ctx.fillStyle = sandPattern;
 				ctx.fillRect(0, 0, W, H);
 			} else {
-				ctx.fillStyle = '#C2B280'; // 後備顏色
+				ctx.fillStyle = '#C2B280'; // Fallback color
 				ctx.fillRect(0, 0, W, H);
 			}
-			if (!player) {
-				requestAnimationFrame(loop);
-				return;
-			}
-			
-			const offsetX = player.x - W / 2;
-			const offsetY = player.y - H / 2;
-			
-			ctx.drawImage(trackImg, -offsetX, -offsetY, TRACKS[currentTrack].originalWidth * SCALE, TRACKS[currentTrack].originalHeight * SCALE);
-			
-			// 賽道路徑
-			drawCurrentTrackRoad(ctx, offsetX, offsetY);
-			drawStartGrid(ctx, TRACKS[currentTrack], SCALE, offsetX, offsetY);
+					if (!player) {
+						requestAnimationFrame(loop);
+						return;
+					}
+					
+					const offsetX = player.x - W / 2;
+					const offsetY = player.y - H / 2;
+					
+					ctx.drawImage(trackImg, -offsetX, -offsetY, TRACKS[currentTrack].originalWidth * SCALE, TRACKS[currentTrack].originalHeight * SCALE);
+					
+					// 賽道路徑
+					drawCurrentTrackRoad(ctx, offsetX, offsetY);
+					drawStartGrid(ctx, TRACKS[currentTrack], SCALE, offsetX, offsetY);
 
-			// 繪製胎痕 (線段繪製)
-			ctx.save();
-			tireMarks.forEach(mark => {
-				const alpha = Math.min(1, mark.life / 60); 
-				const size = 10; 
-				
-				ctx.strokeStyle = `rgba(0, 0, 0, ${0.8 * alpha})`; 
-				ctx.lineWidth = size; 
-				ctx.lineCap = 'round'; 
-				
-				ctx.beginPath();
-				ctx.moveTo(mark.x1 - offsetX, mark.y1 - offsetY);
-				ctx.lineTo(mark.x2 - offsetX, mark.y2 - offsetY);
-				ctx.stroke(); 
-			});
-			ctx.restore();
-			
-			// 繪製塵土特效
-			ctx.save();
-			dustParticles.forEach(p => {
-				const alpha = p.life / p.maxLife;
-				const size = alpha * 10; 
-				const color = `rgba(180, 180, 180, ${alpha * 0.6})`; 
-				
-				ctx.fillStyle = color;
-				ctx.beginPath();
-				ctx.arc(p.x - offsetX, p.y - offsetY, size / 2, 0, Math.PI * 2);
-				ctx.fill();
-			});
-			ctx.restore();
-			
-			// 繪製所有AI車輛
-			allCars.forEach(car => {
+					// 繪製胎痕 (線段繪製)
 					ctx.save();
-					ctx.translate(car.x - offsetX, car.y - offsetY);
-					ctx.rotate(car.angle + Math.PI / 2);
-					if (car.img && car.img.complete) {
-						ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
-					}
+					tireMarks.forEach(mark => {
+						const alpha = Math.min(1, mark.life / 60); 
+						const size = 10; 
+						
+						ctx.strokeStyle = `rgba(0, 0, 0, ${0.8 * alpha})`; 
+						ctx.lineWidth = size; 
+						ctx.lineCap = 'round'; 
+						
+						ctx.beginPath();
+						ctx.moveTo(mark.x1 - offsetX, mark.y1 - offsetY);
+						ctx.lineTo(mark.x2 - offsetX, mark.y2 - offsetY);
+						ctx.stroke(); 
+					});
 					ctx.restore();
-				});
-				
-			// AI邏輯更新
-			if (gameState === 'racing' && !raceFinished) {
-				
-				// AI 獨立摩擦力設定 (已調整)
-				const FORWARD_DAMPING_AI = 0.985; 
-
-				allCars.forEach(car => {
 					
-					const prevAngle = car.angle;
+					// 繪製塵土特效
+					ctx.save();
+					dustParticles.forEach(p => {
+						const alpha = p.life / p.maxLife;
+						const size = alpha * 10; 
+						const color = `rgba(180, 180, 180, ${alpha * 0.6})`; 
+						
+						ctx.fillStyle = color;
+						ctx.beginPath();
+						ctx.arc(p.x - offsetX, p.y - offsetY, size / 2, 0, Math.PI * 2);
+						ctx.fill();
+					});
+					ctx.restore();
 					
-					followWaypoints(car); 
-					
-					// 計算實際轉彎率 (Angular Change)
-					let rawTurnRate = car.angle - prevAngle;
-
-					// 處理角度環繞 (例如從 359度到 1度)
-					if (rawTurnRate > Math.PI) rawTurnRate -= 2 * Math.PI;
-					if (rawTurnRate < -Math.PI) rawTurnRate += 2 * Math.PI;
-					
-					let steering = rawTurnRate; 
-					
-					// 如果轉彎率極小，視為直行
-					if (Math.abs(steering) < 0.0001) {
-						steering = 0;
-					} else {
-						// *** 暴力放大轉向輸入，強制甩尾 (已減半) ***
-						steering *= 100.0; 
-					}
-
-					
-					// ---------------------
-					// --- AI 飄移物理：決定實際位置 ---
-					// ---------------------
-					const sideFrictionFactor = 0.85; // 側滑摩擦力增加
-					const sideSpeedGeneration = 0.5; 
-					
-					car.forwardSpeed = car.speed || 0; 
-					car.sideSpeed = car.sideSpeed || 0;
-					
-					// 強制觸發甩尾物理：只要有轉向意圖 (steering != 0) 就一定會產生側滑速度
-					if (Math.abs(steering) > 0) {
-						 // *** 側滑產生乘數從 0.1 減少到 0.05 ***
-						 car.sideSpeed -= car.forwardSpeed * steering * sideSpeedGeneration * 0.07; 
-					}
-					
-					// 應用側滑摩擦力
-					car.sideSpeed *= sideFrictionFactor; 
-					
-					// 應用前進阻力
-					car.forwardSpeed *= FORWARD_DAMPING_AI; 
-					
-					// 轉換為實際的 X/Y 移動
-					const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
-					const driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
-					const actualAngle = car.angle + driftAngle; 
-
-					// 這裡負責更新 AI 車輛的位置
-					car.x += Math.cos(actualAngle) * totalSpeed;
-					car.y += Math.sin(actualAngle) * totalSpeed;
-					
-					car.speed = totalSpeed; // 更新實際移動速度
-					car.driftAngle = driftAngle; 
-					
-					
-					// ---------------------
-					// --- 內聯 AI 胎痕/塵土生成 ---
-					// ---------------------
-					const TIRE_MARK_THRESHOLD = 1.0; 
-					const AI_MAX_SPEED = 11.0; 
-					const DRIFT_SPEED_THRESHOLD = AI_MAX_SPEED * 0.4; 
-					
-					const isDrifting = car.speed > DRIFT_SPEED_THRESHOLD && Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD;
-
-					const rearX = car.x + Math.cos(car.angle + Math.PI) * (CARHEIGHT / 2);
-					const rearY = car.y + Math.sin(car.angle + Math.PI) * (CARHEIGHT / 2);
-					const perpX = Math.cos(car.angle + Math.PI / 2);
-					const perpY = Math.sin(car.angle + Math.PI / 2);
-					const lateralOffset = CARWIDTH / 2 * 0.7; 
-					
-					const currentX_L = rearX + perpX * lateralOffset;
-					const currentY_L = rearY + perpY * lateralOffset;
-					const currentX_R = rearX - perpX * lateralOffset;
-					const currentY_R = rearY - perpY * lateralOffset;
-
-					const lastX_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.x : currentX_L;
-					const lastY_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.y : currentY_L;
-					const lastX_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.x : currentX_R;
-					const lastY_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.y : currentY_R;
-
-					if (isDrifting) {
-						// 胎痕壽命 60 幀
-						const TIRE_MARK_LIFE = 60; 
-
-						tireMarks.push({
-							x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
-							life: TIRE_MARK_LIFE 
-						});
-						tireMarks.push({
-							x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
-							life: TIRE_MARK_LIFE 
+					// 繪製所有AI車輛
+					allCars.forEach(car => {
+							ctx.save();
+							ctx.translate(car.x - offsetX, car.y - offsetY);
+							ctx.rotate(car.angle + Math.PI / 2);
+							if (car.img && car.img.complete) {
+								ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+							}
+							ctx.restore();
 						});
 						
-						emitDustForCar(car, false, AI_MAX_SPEED);
-					}
-					
-					car.lastTireMarkPosL = {x: currentX_L, y: currentY_L};
-					car.lastTireMarkPosR = {x: currentX_R, y: currentY_R};
-					
-					// AI 加速特效
-					const AI_BOOST_THRESHOLD = AI_MAX_SPEED * 0.8; 
-					if (car.speed > AI_BOOST_THRESHOLD) emitBoostForCar(car, false);
-				});
-				
-				// 玩家加速特效
-				const MAX_SPEED = 25; // 玩家極速
-				const PLAYER_BOOST_THRESHOLD = MAX_SPEED * 0.8;
-				if (player.speed > PLAYER_BOOST_THRESHOLD) emitBoostForCar(player, false); 
-			}
-					
-			
-			// 更新粒子和胎痕
-			boostParticles = boostParticles.filter(p => {
-				p.x += p.vx;
-				p.y += p.vy;
-				p.life--;
-				p.vy += 0.1; // 重力
-				return p.life > 0;
-			});
-
-			tireMarks = tireMarks.filter(mark => {
-				mark.life--;
-				return mark.life > 0;
-			});
-			
-			dustParticles = dustParticles.filter(p => {
-				p.x += p.vx;
-				p.y += p.vy;
-				p.life--;
-				p.vx *= 0.9; 
-				p.vy *= 0.9;
-				return p.life > 0;
-			});
-
-			// 繪製加速特效
-			ctx.save();
-			boostParticles.forEach(p => {
-				const alpha = p.life / p.maxLife;
-				const size = alpha * 8;
-				const hue = 20 + alpha * 30;
-				ctx.fillStyle = `hsla(${hue}, 100%, 50%, ${alpha})`;
-				ctx.shadowBlur = 10;
-				ctx.shadowColor = `hsla(${hue}, 100%, 50%, 0.8)`;
-				ctx.beginPath();
-				ctx.arc(p.x - offsetX, p.y - offsetY, size, 0, Math.PI * 2);
-				ctx.fill();
-			});
-			ctx.restore();
-			
-			
-			// 玩家車輛
-			ctx.save();
-			ctx.translate(W / 2, H / 2);
-			ctx.rotate(player.angle + Math.PI / 2);
-			if (player.img && player.img.complete) {
-				ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
-			}
-			ctx.restore();
-			
-			// 倒數計時
-			if (gameState === 'countdown') {
-					countdown -= 1 / 60;
-					const el = document.getElementById('countdown');
-					el.style.display = 'block';
-					if (countdown > 4) el.textContent = '3';
-					else if (countdown > 3) el.textContent = '2';
-					else if (countdown > 2) el.textContent = '1';
-					else if (countdown > 1) {
-						el.textContent = 'GO!';
-						el.style.color = '#0f0';
-					} else {
-						if (countdown <= 0) { 
-							gameState = 'racing';
-						}
-					}
-				} else {
-					 document.getElementById('countdown').style.display = 'none';
-				}
-				
-				// 玩家控制邏輯
-				if (gameState === 'racing' && !raceFinished) {
-					
-					player.raceTime++; 
-					
-					// 獨立的摩擦力設定
-					const FORWARD_DAMPING_PLAYER = 0.999; 
-
-					// 1. 設置轉向率和加速度
-					const STEERING_RATE = 0.038 * player.spec.handling;
-					const ACCEL_RATE = player.spec.acceleration * 0.060; 
-					const MAX_SPEED = 25; 
-					
-					let acceleration = 0;
-					let steering = 0;
-					
-					if (keys.ArrowUp || touch.up) acceleration = ACCEL_RATE;
-					if (keys.ArrowDown || touch.down) acceleration = -1.8;
-					if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
-					if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
-
-					// --- 玩家【高級飄移物理模型】---
-					
-					steering = Math.max(-0.4, Math.min(steering, 0.4));
-					
-					player.forwardSpeed = (player.forwardSpeed || player.speed || 0) + acceleration;
-					player.forwardSpeed = Math.max(-10, Math.min(player.forwardSpeed, MAX_SPEED));
-
-					player.angle += steering * player.forwardSpeed / 10; 
-
-					// 飄移物理
-					const sideFrictionFactor = 0.95; 
-					const sideSpeedGeneration = 1.8; 
-					
-					player.sideSpeed = player.sideSpeed || 0;
-					if(Math.abs(steering) > 0.01) { 
-						player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration; 
-					}
-					
-					player.sideSpeed *= sideFrictionFactor; 
-					player.forwardSpeed *= FORWARD_DAMPING_PLAYER; 
-					
-					const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
-					const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
-					const actualAngle = player.angle + driftAngle;
-
-					player.x += Math.cos(actualAngle) * totalSpeed;
-					player.y += Math.sin(actualAngle) * totalSpeed;
-					
-					player.speed = totalSpeed; 
-					player.driftAngle = driftAngle; 
-
-					// --- 胎痕/塵土生成 (玩家) ---
-					const TIRE_MARK_THRESHOLD = 8.0; 
-					const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.6; 
-					
-					const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
-
-					const rearX = player.x + Math.cos(player.angle + Math.PI) * (CARHEIGHT / 2);
-					const rearY = player.y + Math.sin(player.angle + Math.PI) * (CARHEIGHT / 2);
-					const perpX = Math.cos(player.angle + Math.PI / 2);
-					const perpY = Math.sin(player.angle + Math.PI / 2);
-					const lateralOffset = CARWIDTH / 2 * 0.7; 
-					
-					const currentX_L = rearX + perpX * lateralOffset;
-					const currentY_L = rearY + perpY * lateralOffset;
-					const currentX_R = rearX - perpX * lateralOffset;
-					const currentY_R = rearY - perpY * lateralOffset;
-
-					const lastX_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.x : currentX_L;
-					const lastY_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.y : currentY_L;
-					const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R;
-					const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
-
-					if (isDrifting) {
-						// 胎痕壽命 60 幀
-						const TIRE_MARK_LIFE = 60; 
-
-						tireMarks.push({
-							x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
-							life: TIRE_MARK_LIFE 
-						});
-						tireMarks.push({
-							x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
-							life: TIRE_MARK_LIFE
-						});
+					// AI邏輯更新
+					if (gameState === 'racing' && !raceFinished) {
 						
-						emitDustForCar(player, true, MAX_SPEED);
-					}
-					
-					player.lastTireMarkPosL = {x: currentX_L, y: currentY_L};
-					player.lastTireMarkPosR = {x: currentX_R, y: currentY_R};
+						// AI 獨立摩擦力設定 (已調整)0.985
+						const FORWARD_DAMPING_AI = 0.984; 
 
+						allCars.forEach(car => {
+							const prevAngle = car.angle;
+							followWaypoints(car);
+							car.forwardSpeed *= FORWARD_DAMPING_AI;
+							car.speed = Math.hypot(car.forwardSpeed || 0, car.sideSpeed || 0);
+							let turnRate = car.angle - prevAngle;
+							turnRate = Math.atan2(Math.sin(turnRate), Math.cos(turnRate));
+							car.lastTurnRate = turnRate;
+							
+							
+							// ---------------------
+							// --- 內聯 AI 胎痕/塵土生成 ---
+							// ---------------------
+							const TIRE_MARK_THRESHOLD = 0.18; 
+							const AI_MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 26.0; 
+							const DRIFT_SPEED_THRESHOLD = AI_MAX_SPEED * 0.18; 
+							
+							const aiForward = Math.abs(car.forwardSpeed || 0);
+							const aiDriftAmt = Math.abs(car.driftAngle || 0);
+							const isDrifting = (aiForward > DRIFT_SPEED_THRESHOLD) && (Math.abs(turnRate) > 0.012 || Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD || aiDriftAmt > 0.12);
 
-					// 碰撞檢測 
-					if (player.speed > 0) {
-						for (let car of allCars) {
-							checkCollisions(player, car);
-						}
-						
-						if (player.raceTime > 120) { 
-							for (let i = 0; i < allCars.length; i++) {
-								for (let j = i + 1; j < allCars.length; j++) {
-									checkCollisions(allCars[i], allCars[j]);
+							const rearX = car.x + Math.cos(car.angle + Math.PI) * (CARHEIGHT / 2);
+							const rearY = car.y + Math.sin(car.angle + Math.PI) * (CARHEIGHT / 2);
+							const perpX = Math.cos(car.angle + Math.PI / 2);
+							const perpY = Math.sin(car.angle + Math.PI / 2);
+							const lateralOffset = CARWIDTH / 2 * 0.7; 
+							
+							const currentX_L = rearX + perpX * lateralOffset;
+							const currentY_L = rearY + perpY * lateralOffset;
+							const currentX_R = rearX - perpX * lateralOffset;
+							const currentY_R = rearY - perpY * lateralOffset;
+
+							const lastX_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.x : currentX_L;
+							const lastY_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.y : currentY_L;
+							const lastX_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.x : currentX_R;
+							const lastY_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.y : currentY_R;
+
+							if (isDrifting) {
+								// 胎痕壽命 60 幀
+								const TIRE_MARK_LIFE = 60; 
+
+								tireMarks.push({
+									x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
+									life: TIRE_MARK_LIFE 
+								});
+								tireMarks.push({
+									x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
+									life: TIRE_MARK_LIFE 
+								});
+								
+								emitDustForCar(car, false, AI_MAX_SPEED);
+							}
+							
+							car.lastTireMarkPosL = {x: currentX_L, y: currentY_L};
+							car.lastTireMarkPosR = {x: currentX_R, y: currentY_R};
+							
+							// AI moving dust (always when moving)
+							if (car.speed > 0.6) emitMoveDustForCar(car);
+							
+							// AI VFX rules:
+							// - Blue boost flame when boosting (long straight)
+							// - Orange high-speed flame at high speed when not boosting
+							const AI_SPEED_FLAME_FIXED = 18.0; // Lowered threshold for flame effect
+							const AI_SPEED_FLAME_THRESHOLD = Math.min(AI_MAX_SPEED * 0.4, AI_SPEED_FLAME_FIXED);
+							const aiTotalSpeed = Math.abs(car.speed || 0);
+							
+							// Debug logging
+							const shouldDebug = true; // Enable debug logs to help troubleshoot
+							if (aiTotalSpeed > AI_MAX_SPEED * 0.3) { // Lowered speed threshold for debugging
+								console.log('AI Speed:', aiTotalSpeed.toFixed(2), 
+									'Threshold:', AI_SPEED_FLAME_THRESHOLD.toFixed(2),
+									'Forward:', (car.forwardSpeed || 0).toFixed(2),
+									'Accel:', (car.lastAIAcceleration || 0).toFixed(2),
+									'TurnRate:', (turnRate || 0).toFixed(4),
+									'FlameTimer:', (car.speedFlameTimer || 0).toFixed(2));
+							}
+
+							// In the AI car update section, replace the flame effect logic with:
+							if (car.isBoosting) {
+								if (Math.random() < 0.7) emitBoostForCar(car, false);
+							} else {
+								// Calculate AI car's max speed based on its spec
+								const carMaxSpeed = getCarMaxSpeed(car);
+								const currentSpeed = Math.abs(car.forwardSpeed || car.speed || 0);
+								const speedRatio = currentSpeed / carMaxSpeed;
+								
+								// Set the speed ratio threshold for flame effect (70% of max speed)
+								const speedRatioForFlame = 0.14;
+
+								// Only show flame when speed is at or above 70% of max speed
+								if (speedRatio >= speedRatioForFlame) {
+									// Always emit flame when above threshold
+									emitSpeedFlameForCar(car, false);
+								}
+
+								// Debug info - show current speed and flame status
+								if (Math.random() < 0.05) {  // Log only 5% of the time
+									console.log('AI Flame Debug:', {
+										car: car.spec.image.split('/').pop(),
+										currentSpeed: currentSpeed.toFixed(1),
+										maxSpeed: carMaxSpeed.toFixed(1),
+										speedRatio: speedRatio.toFixed(2),
+										flameActive: (speedRatio >= speedRatioForFlame) ? 'YES' : 'NO'
+									});
 								}
 							}
-						}
-					}
-				
-					drawDashboard(player.speed);
-					
-					
-					// 完賽檢測
-					const startLineY = TRACKS[currentTrack].start.y * SCALE;
-
-					if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
-						lap++;
-
-						if (lap > totalLaps) {
-							raceFinished = true;
-							gameState = 'finished';
-
-							const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-							const pos = sorted.findIndex(c => c === player) + 1;
-							document.getElementById('finalPos').textContent =
-							  `FINAL POS #${pos}/${allCars.length + 1}`;
-							document.getElementById('finishScreen').style.display = 'flex';
-						}
-					}
-
-					player.prevY = player.y;
-
-					
-					// 更新HUD
-					const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-					const pos = sorted.findIndex(c => c === player) + 1;
-					document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
-					document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
-					document.getElementById('speedHud').textContent = `${Math.round(Math.abs(player.speed) * 10)} kmh`;
-				}
-				
-				if (gameState !== 'title') {
-					drawMinimap(); 
-				}
+						});
 						
+						// Player speed flame effect (orange) when near max speed (within 2 km/h) and not boosting
+						const wantsForwardVfx = (keys.ArrowUp || touch.up);
+						const playerBoostingActive = isBoosting && wantsForwardVfx && boostMeter > 0 && boostCooldown <= 0;
+						const playerSteeringActive = (keys.ArrowLeft || touch.left || keys.ArrowRight || touch.right);
+						
+						if (!playerBoostingActive && !playerSteeringActive && wantsForwardVfx) {
+						    // Calculate player's max speed based on spec
+						    const playerMaxSpeed = getCarMaxSpeed(player);
+						    const speedFlameThreshold = playerMaxSpeed - 6.2; // Flame starts at max speed - 2 km/h
+						    
+						    if (player.speed > speedFlameThreshold) {
+						        // Calculate flame intensity based on how close to max speed
+						        const speedRatio = (player.speed - speedFlameThreshold) / 2; // Normalize to 0-1 range for 2 km/h window
+						        const flameIntensity = Math.min(1, Math.max(0, speedRatio));
+						        
+						        // Emit flame with probability based on intensity
+						        if (Math.random() < flameIntensity * 0.8) {
+						            emitSpeedFlameForCar(player, true);
+						        }
+						    }
+						}
+					}
+							
+					
+					// 更新粒子和胎痕
+					boostParticles = boostParticles.filter(p => {
+						p.x += p.vx;
+						p.y += p.vy;
+						p.life--;
+						p.vy += (p.gravity || 0.1);
+						return p.life > 0;
+					});
+
+					tireMarks = tireMarks.filter(mark => {
+						mark.life--;
+						return mark.life > 0;
+					});
+					
+					dustParticles = dustParticles.filter(p => {
+						p.x += p.vx;
+						p.y += p.vy;
+						p.life--;
+						p.vx *= 0.9; 
+						p.vy *= 0.9;
+						return p.life > 0;
+					});
+
+					// 繪製加速特效
+					ctx.save();
+					boostParticles.forEach(p => {
+						const alpha = p.life / p.maxLife;
+						if (p.type === 'flame') {
+							const length = (p.length || 40) * (0.35 + alpha);
+							const width = (p.width || 8) * (0.6 + alpha * 0.6);
+							const sx = p.x - offsetX;
+							const sy = p.y - offsetY;
+							const ex = sx + Math.cos(p.angle) * length;
+							const ey = sy + Math.sin(p.angle) * length;
+							ctx.globalAlpha = Math.min(1, alpha * 1.15);
+							ctx.strokeStyle = p.color || `rgba(255, 120, 0, ${alpha})`;
+							ctx.lineWidth = width;
+							ctx.lineCap = 'round';
+							ctx.shadowBlur = 20;
+							ctx.shadowColor = p.color || 'rgba(255,120,0,0.9)';
+							ctx.beginPath();
+							ctx.moveTo(sx, sy);
+							ctx.lineTo(ex, ey);
+							ctx.stroke();
+						} else {
+							const size = (p.size || 12) * (0.4 + alpha);
+							ctx.fillStyle = p.color || `rgba(0, 200, 255, ${alpha})`;
+							ctx.globalAlpha = Math.min(1, alpha * 1.2);
+							ctx.shadowBlur = 18;
+							ctx.shadowColor = p.color || 'rgba(0,200,255,0.9)';
+							ctx.beginPath();
+							ctx.arc(p.x - offsetX, p.y - offsetY, size, 0, Math.PI * 2);
+							ctx.fill();
+						}
+					});
+					ctx.restore();
+					
+					
+					// 玩家車輛
+					ctx.save();
+					ctx.translate(W / 2, H / 2);
+					ctx.rotate(player.angle + Math.PI / 2);
+					if (player.img && player.img.complete) {
+						ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+					}
+					ctx.restore();
+					if (allCars && allCars.length) {
+						let c0 = allCars[0];
+						let v0 = Math.abs(c0.speed || 0);
+						for (let i = 1; i < allCars.length; i++) {
+							const vi = Math.abs(allCars[i].speed || 0);
+							if (vi > v0) {
+								c0 = allCars[i];
+								v0 = vi;
+							}
+						}
+						const a0 = Math.abs(c0.forwardSpeed || 0);
+						const s0 = Math.abs(c0.sideSpeed || 0);
+						const d0 = Math.abs(c0.driftAngle || 0);
+						const tr0 = (c0 && typeof c0.lastTurnRate === 'number') ? c0.lastTurnRate : 0;
+						const m0 = (c0 && typeof c0.maxSpeedLimit === 'number') ? c0.maxSpeedLimit : 0;
+						const AI_THR_FIXED = 395 / 15;
+						const t0 = (m0 <= AI_THR_FIXED) ? (m0 * 0.95) : AI_THR_FIXED;
+						const st0 = (c0 && typeof c0.speedFlameTimer === 'number') ? c0.speedFlameTimer : 0;
+						const boosting0 = !!c0.isBoosting;
+						const flameOn0 = (!boosting0) && (st0 > 0);
+						const gate0 = (c0.forwardSpeed || 0) > 0.5 && (c0.lastAIAcceleration || 0) >= 0 && Math.abs(tr0) < 0.01;
+						const bp0 = (boostParticles && boostParticles.length) ? boostParticles.length : 0;
+						const playerMaxDbg = 34;
+						const playerThrDbg = playerMaxDbg * 0.8;
+						const wantsForwardDbg = (keys.ArrowUp || touch.up);
+						const playerBoostingDbg = isBoosting && wantsForwardDbg && boostMeter > 0 && boostCooldown <= 0;
+						const playerSpeedDbg = Math.abs(player.speed || 0);
+						const playerSteeringDbg = (keys.ArrowLeft || touch.left || keys.ArrowRight || touch.right);
+						const playerFlameDbg = (!playerBoostingDbg) && wantsForwardDbg && (!playerSteeringDbg) && (playerSpeedDbg > playerThrDbg);
+						ctx.save();
+						ctx.fillStyle = 'rgba(0,0,0,0.55)';
+						ctx.fillRect(10, 78, 520, 150);
+						ctx.fillStyle = '#fff';
+						ctx.font = '14px Arial';
+						ctx.fillText(`AI(fast) f:${a0.toFixed(1)} s:${s0.toFixed(2)} d:${d0.toFixed(2)} max:${m0.toFixed(1)} (${Math.round(m0 * 15)}kmh)`, 18, 102);
+						ctx.fillText(`AI(fast) v:${v0.toFixed(1)} (${Math.round(v0 * 15)}kmh) thr:${t0.toFixed(1)} (${Math.round(t0 * 15)}kmh) tr:${tr0.toFixed(3)} gate:${gate0} tmr:${st0} boosting:${boosting0} flame:${flameOn0}`, 18, 124);
+						ctx.fillText(`P v:${playerSpeedDbg.toFixed(1)} (${Math.round(playerSpeedDbg * 15)}kmh) thr:${playerThrDbg.toFixed(1)} (${Math.round(playerThrDbg * 15)}kmh) boosting:${playerBoostingDbg} flame:${playerFlameDbg}`, 18, 146);
+						ctx.fillText(`boostParticles:${bp0}`, 18, 168);
+						ctx.restore();
+					}
+					
+					// 倒數計時
+					// In the game loop, update the countdown logic
+					// Countdown is now handled by the interval
+					if (gameState === 'countdown') {
+						// The countdown is now handled by the interval
+						requestAnimationFrame(loop);
+						return; // Skip the rest of the loop while counting down
+					}
+						
+					// 玩家控制邏輯
+					if (gameState === 'racing' && !raceFinished) {
+						player.raceTime++;
+						
+						// 獨立的摩擦力設定 (沿用舊版)0.999
+						const FORWARD_DAMPING_PLAYER = 0.997;
+						
+						// 1. 設置轉向率和加速度 
+						const STEERING_RATE = 0.038 * player.spec.handling * 0.38;
+						const ACCEL_RATE = player.spec.acceleration * 0.0085 * SPEED_UNIT_SCALE;
+						const MAX_SPEED = 34;
+						
+						let acceleration = 0;
+						let steering = 0;
+						
+						const wantsForward = (keys.ArrowUp || touch.up);
+						if (wantsForward) acceleration = ACCEL_RATE;
+						if (keys.ArrowDown || touch.down) {
+							// softer brake: damp speed toward 0; allow very gentle reverse
+							if ((player.forwardSpeed || 0) > 0.2) {
+								player.forwardSpeed *= 0.92;
+								acceleration = 0;
+							} else {
+								acceleration = -0.18;
+							}
+						}
+						if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
+						if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
+						
+						const boostingActive = isBoosting && wantsForward && boostMeter > 0 && boostCooldown <= 0;
+						const maxSpeedNow = boostingActive ? (MAX_SPEED * BOOST_SPEED_MULTIPLIER) : MAX_SPEED;
+						if (boostingActive) {
+							acceleration *= 1.25;
+							boostMeter = Math.max(0, boostMeter - BOOST_DRAIN_RATE);
+							if (Math.random() < 0.7) emitBoostForCar(player, true);
+							if (boostMeter <= 0) boostCooldown = 60;
+						} else {
+							if (boostCooldown <= 0 && boostMeter < 1.0) {
+								boostMeter = Math.min(1.0, boostMeter + BOOST_RECHARGE_RATE);
+							}
+						}
+						
+						// --- 玩家【高級飄移物理模型】---
+						steering = Math.max(-0.4, Math.min(steering, 0.4));
+						
+						player.forwardSpeed = (player.forwardSpeed || player.speed || 0) + acceleration;
+						// prevent snapping into fast reverse
+						const MAX_REVERSE_SPEED = 3.0;
+						player.forwardSpeed = Math.max(-MAX_REVERSE_SPEED, Math.min(player.forwardSpeed, maxSpeedNow));
+						
+						// 高速時降低轉向靈敏度，避免「瞬間轉太多」
+						const speedForSteer = Math.abs(player.forwardSpeed);
+						const steerDamp = 1 / (1 + speedForSteer * 0.06);
+						player.angle += steering * steerDamp * player.forwardSpeed / 8;
+						
+						// 飄移物理
+						const sideFrictionFactor = 0.99;
+						const sideSpeedGeneration = 1.2;
+						
+						player.sideSpeed = player.sideSpeed || 0;
+						if (Math.abs(steering) > 0.01) {
+							player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration;
+						}
+						// 限制側滑量，避免轉向時「甩得太誇張」
+						const maxSideSlip = Math.abs(player.forwardSpeed) * 0.7;
+						player.sideSpeed = Math.max(-maxSideSlip, Math.min(player.sideSpeed, maxSideSlip));
+						
+						player.sideSpeed *= sideFrictionFactor;
+						player.forwardSpeed *= FORWARD_DAMPING_PLAYER;
+						
+						const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
+						const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
+						const actualAngle = player.angle + driftAngle;
+						
+						player.x += Math.cos(actualAngle) * totalSpeed * MOVE_SCALE;
+						player.y += Math.sin(actualAngle) * totalSpeed * MOVE_SCALE;
+						
+						player.speed = totalSpeed;
+						player.driftAngle = driftAngle;
+						
+						// --- 胎痕/塵土生成 (玩家) ---
+						const TIRE_MARK_THRESHOLD = 8.0;
+						const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.55;
+						const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
+						
+						const rearX = player.x + Math.cos(player.angle + Math.PI) * (CARHEIGHT / 2);
+						const rearY = player.y + Math.sin(player.angle + Math.PI) * (CARHEIGHT / 2);
+						const perpX = Math.cos(player.angle + Math.PI / 2);
+						const perpY = Math.sin(player.angle + Math.PI / 2);
+						const lateralOffset = CARWIDTH / 2 * 0.7;
+						
+						const currentX_L = rearX + perpX * lateralOffset;
+						const currentY_L = rearY + perpY * lateralOffset;
+						const currentX_R = rearX - perpX * lateralOffset;
+						const currentY_R = rearY - perpY * lateralOffset;
+						
+						const lastX_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.x : currentX_L;
+						const lastY_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.y : currentY_L;
+						const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R;
+						const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
+						
+						if (isDrifting) {
+							const TIRE_MARK_LIFE = 60;
+							tireMarks.push({ x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L, life: TIRE_MARK_LIFE });
+							tireMarks.push({ x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R, life: TIRE_MARK_LIFE });
+							emitDustForCar(player, true, maxSpeedNow);
+						}
+						
+						player.lastTireMarkPosL = { x: currentX_L, y: currentY_L };
+						player.lastTireMarkPosR = { x: currentX_R, y: currentY_R };
+						
+						if (player.speed > 0.6) {
+							emitMoveDustForCar(player);
+						}
+
+							
+							// 處理Boost (已在物理計算前處理)
+							if (!isBoosting) {
+								// keep current state
+							}
+							// Update boost bar
+							const boostBar = document.getElementById('boostBar');
+							if (boostBar) {
+								boostBar.style.transform = `scaleX(${boostMeter})`;
+								boostBar.style.background = 'linear-gradient(90deg, #ff3333, #ff6666)';
+							}
+
+							// Handle boost cooldown
+							if (boostCooldown > 0) boostCooldown--;
+
+						drawDashboard(player.speed);
+						
+						
+						// 完賽檢測
+						const startLineY = TRACKS[currentTrack].start.y * SCALE;
+
+						if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
+							lap++;
+
+							if (lap > totalLaps) {
+								raceFinished = true;
+								gameState = 'finished';
+
+								const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
+								const pos = sorted.findIndex(c => c === player) + 1;
+								document.getElementById('finalPos').textContent =
+								`FINAL POS #${pos}/${allCars.length + 1}`;
+								document.getElementById('finishScreen').style.display = 'flex';
+							}
+						}
+
+						player.prevY = player.y;
+
+						
+						// 更新HUD
+						const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
+						const pos = sorted.findIndex(c => c === player) + 1;
+						document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+						document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
+						document.getElementById('speedHud').textContent = `${Math.round(Math.abs(player.speed) * 15)} kmh`;
+					}
+
+			if (gameState !== 'title') {
+				try {
+					drawMinimap(); 
+				} catch (error) {
+					console.error('Error in game loop (minimap):', error);
+				}
+
+				try {
+					requestAnimationFrame(loop);
+				} catch (error) {
+					console.error('Error in game loop (animation frame):', error);
+				}
+			} else {
 				requestAnimationFrame(loop);
+			}
 		}
 
-      
-        // 事件監聽器
-        window.addEventListener('load', () => {
-			sandPattern = createSandPattern();
-            // 生成棋盤格
-            const checkered = document.getElementById('checkered');
-            for (let i = 0; i < 60; i++) {
-                const div = document.createElement('div');
-                checkered.appendChild(div);
-            }
-            
-            document.getElementById('startTitleBtn').onclick = () => {
-                document.getElementById('titleScreen').style.display = 'none';
-                document.getElementById('mainMenu').classList.add('active');
-            };
-            
-            document.getElementById('champBtn').onclick = () => openTrackSelect('championship');
-            document.getElementById('timeBtn').onclick = () => openTrackSelect('timeattack');
-            
-            document.getElementById('confirmTrackBtn').onclick = () => {
-                document.getElementById('trackSelect').classList.remove('active');
-                document.getElementById('carMenu').classList.add('active');
-                buildCarList();
-            };
-            
-            document.getElementById('confirmBtn').onclick = () => {
-                document.getElementById('carMenu').classList.remove('active');
-                playerCarImg.src = CARSPECS[selectedCar].image;
-                playerCarImg.onload = startRace;
-            };
-            
-            document.getElementById('backToMenuBtn').onclick = () => {
-                document.getElementById('finishScreen').style.display = 'none';
-                document.getElementById('mainMenu').classList.add('active');
-                raceFinished = false;
-            };
-            
-            // 觸控控制
-            if ('ontouchstart' in window && navigator.maxTouchPoints > 0 && screen.width <= 1024) {
-                document.getElementById('mobileControls').style.display = 'flex';
-                ['Up', 'Down', 'Left', 'Right'].forEach(d => {
-                    const b = document.getElementById(`btn${d}`);
-                    b.addEventListener('touchstart', e => {
-                        e.preventDefault();
-                        touch[d.toLowerCase()] = true;
-                    });
-                    b.addEventListener('touchend', () => {
-                        touch[d.toLowerCase()] = false;
-                    });
-                });
-            }
-            
-            window.addEventListener('keydown', e => {
-                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-                    e.preventDefault();
-                    keys[e.key] = true;
-                }
-            });
-            window.addEventListener('keyup', e => {
-                keys[e.key] = false;
-            });
-            
-            loadTrack(0);
-            requestAnimationFrame(loop);
-        });
-    
+		// 事件監聽器
+		window.addEventListener('load', () => {
+				sandPattern = createSandPattern();
+				// 生成棋盤格
+				const checkered = document.getElementById('checkered');
+				for (let i = 0; i < 60; i++) {
+					const div = document.createElement('div');
+					checkered.appendChild(div);
+				}
+				
+				document.getElementById('startTitleBtn').onclick = () => {
+					document.getElementById('titleScreen').style.display = 'none';
+					document.getElementById('mainMenu').classList.add('active');
+				};
+				
+				document.getElementById('champBtn').onclick = () => openTrackSelect('championship');
+				document.getElementById('timeBtn').onclick = () => openTrackSelect('timeattack');
+				
+				document.getElementById('confirmTrackBtn').onclick = () => {
+					document.getElementById('trackSelect').classList.remove('active');
+					document.getElementById('carMenu').classList.add('active');
+					buildCarList();
+				};
+				
+				document.getElementById('confirmBtn').onclick = () => {
+					document.getElementById('carMenu').classList.remove('active');
+					playerCarImg.src = CARSPECS[selectedCar].image;
+					playerCarImg.onload = startRace;
+				};
+				
+				document.getElementById('backToMenuBtn').onclick = () => {
+					document.getElementById('finishScreen').style.display = 'none';
+					document.getElementById('mainMenu').classList.add('active');
+					raceFinished = false;
+				};
+				
+				// 觸控控制
+				if ('ontouchstart' in window && navigator.maxTouchPoints > 0 && screen.width <= 1024) {
+					document.getElementById('mobileControls').style.display = 'flex';
+					['Up', 'Down', 'Left', 'Right'].forEach(d => {
+						const b = document.getElementById(`btn${d}`);
+						b.addEventListener('touchstart', e => {
+							e.preventDefault();
+							touch[d.toLowerCase()] = true;
+						});
+						b.addEventListener('touchend', () => {
+							touch[d.toLowerCase()] = false;
+						});
+					});
+					
+					// Add boost button touch controls
+					const boostBtn = document.getElementById('boostBtn');
+					if (boostBtn) {
+						boostBtn.addEventListener('touchstart', e => {
+							e.preventDefault();
+							if (boostMeter > 0 && boostCooldown <= 0) {
+								isBoosting = true;
+							}
+						});
+						
+						boostBtn.addEventListener('touchend', e => {
+							e.preventDefault();
+							isBoosting = false;
+						});
+					}
+				}
+				
+				window.addEventListener('keydown', e => {
+					if (e.code === 'Space') {
+						e.preventDefault();
+						if (boostMeter > 0 && boostCooldown <= 0) {
+							isBoosting = true;
+						}
+					} else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+						e.preventDefault();
+						keys[e.key] = true;
+					}
+				});
+				window.addEventListener('keyup', e => {
+					if (e.code === 'Space') {
+						isBoosting = false;
+					} else {
+						keys[e.key] = false;
+					}
+				});
 
-    console.log('[game.js] ✅ 遊戲引擎加載完成');
+				loadTrack(0);
+				if (!raceFinished) {
+					requestAnimationFrame(loop);
+				}
+			});
 
-} catch(error) {
-    console.error('[game.js] ❌ 錯誤:', error);
-    console.error('[game.js] 堆棧:', error.stack);
-}
+			console.log('[game.js] 遊戲引擎加載完成');
+});

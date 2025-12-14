@@ -107,7 +107,40 @@
         #lapHud { top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 12px 35px; border-radius: 12px; font: 32px Arial; }
         #posHud { top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 10px 25px; border-radius: 12px; font: 26px Arial; }
         #speedHud { bottom: 240px; right: 30px; background: rgba(255,0,0,0.8); padding: 20px 40px; border-radius: 25px; font: 60px bold Arial; text-shadow: 0 0 20px #ff0000; }
-        #countdown { top: 50%; left: 50%; transform: translate(-50%,-50%); font: 220px bold Arial; color: #ff0044; display: none; text-shadow: 0 0 60px #ff0000; }
+        #boostBarContainer { 
+        position: absolute; 
+        bottom: 280px; 
+        right: 30px; 
+        width: 350px; 
+        height: 24px; 
+        background: rgba(0,0,0,0.7); 
+        border-radius: 12px; 
+        overflow: hidden; 
+        z-index: 10; 
+        border: 2px solid rgba(255,255,255,0.4);
+        box-shadow: 0 2px 15px rgba(0,0,0,0.6);
+        }
+        #boostBar { 
+        height: 100%; 
+        width: 100%; 
+        background: linear-gradient(90deg, #ff3333, #ff6666); 
+        transform-origin: left; 
+        transform: scaleX(1); 
+        transition: transform 0.1s ease-out;
+        box-shadow: 2px 0 10px rgba(255, 100, 100, 0.5);
+      }
+		#countdown {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			font-size: 200px;
+			font-weight: bold;
+			color: white;
+			text-shadow: 0 0 20px rgba(0,0,0,0.8);
+			display: none;
+			z-index: 100;
+		}
         
         .menu { display: none; position: fixed; inset: 0; background: #000; flex-direction: column; align-items: center; overflow-y: auto; z-index: 99; padding: 40px 20px 120px; }
         .menu.active { display: flex; }
@@ -210,49 +243,71 @@
         
         /* Mobile Controls: 修正方向鍵位置和樣式 (恢復圓形、置於角落) */
 		#mobileControls {
-		  position: fixed;
-		  bottom: 0; 
-		  left: 0;
-		  width: 100%; 
-		  height: 300px; 
-		  pointer-events: none; 
-		  z-index: 999;
-		}
+  position: fixed;
+  bottom: 0; 
+  left: 0;
+  width: 100%; 
+  display: flex;
+  justify-content: space-between;
+  padding: 20px;
+  z-index: 100;
+  pointer-events: none;
+}
 
-		#moveVertical, #moveHorizontal {
-		  position: absolute; 
-		  display: flex;
-		  gap: 10px; 
-		  pointer-events: auto;
-		}
+#moveVertical,
+#moveHorizontal {
+  display: flex;
+  gap: 20px;
+  pointer-events: auto;
+  align-items: center;
+}
 
-		#moveVertical {
-		  left: 20px;
-		  bottom: 80px;
-		  flex-direction: column;
-		}
+#moveVertical {
+  flex-direction: column;
+}
 
-		#moveHorizontal {
-		  right: 20px;
-		  bottom: 120px;
-		  flex-direction: row;
-		}
+#moveHorizontal {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  flex-direction: row;
+}
 
-		#mobileControls button {
-		  width: 160px;  /* 調整為圓形大小 */
-		  height: 160px;
-		  border-radius: 50%; /* **改回圓形** */
-		  border: 2px solid #fff;
-		  background: rgba(0,0,0,0.6);
-		  font-size: 40px; 
-		  color: #fff;
-		  box-shadow: 0 5px 15px rgba(0,0,0,0.7);
-		}
+#mobileControls button {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s;
+  padding: 0;
+  margin: 0;
+}
 
-		#mobileControls button:active {
-		  transform: scale(0.9);
-		}
-		
+#mobileControls button:active {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.8);
+  color: #000;
+}
+
+#boostBtn {
+  background: linear-gradient(45deg, #0066ff, #00ccff) !important;
+  margin-right: 10px;
+  margin-left: 0;
+  font-weight: bold;
+  font-size: 16px;
+  padding: 5px;
+  white-space: nowrap;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+} 
 		/* 新增 Minimap Canvas 樣式 */
 		#minimapCanvas {
 			position: absolute;
@@ -310,6 +365,9 @@
         <div id="speedHud">0 kmh</div>
         <div id="countdown"></div>
 		<canvas id="dashboardCanvas" width="400" height="250"></canvas>
+		<div id="boostBarContainer">
+			<div id="boostBar"></div>
+		</div>
 		<canvas id="minimapCanvas" width="300" height="300"></canvas>
     </div>
     
@@ -319,10 +377,12 @@
 		<button id="btnDown">↓</button>
 	  </div>
 	  <div id="moveHorizontal">
+		<button id="boostBtn">BOOST</button>
 		<button id="btnLeft">←</button>
 		<button id="btnRight">→</button>
 	  </div>
 	</div>
+	<div id="countdown"></div>
 
 
     <script src="cars.js"></script>
