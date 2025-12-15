@@ -1809,21 +1809,53 @@ document.addEventListener('DOMContentLoaded', () => {
 						const unscaledPlayerX = player.x / SCALE;
 						const unscaledPlayerY = player.y / SCALE;
 						
-						const PIT_ENTRY_TRIGGER_DIST = 100 * SCALE;
+						// 從 DOM 取得 Pit HUD 元素
+						const pitHudPrompt = document.getElementById('pitHudPrompt'); 
+						
+						// Pit 入口檢測距離 (確保此處使用了正確的縮放)
+						const PIT_ENTRY_TRIGGER_DIST = 100 * SCALE; 
 
 						const dx = unscaledPlayerX - trackData.pitEntry.x;
 						const dy = unscaledPlayerY - trackData.pitEntry.y;
 						const distToEntry = Math.hypot(dx, dy);
 
-						// 判斷：玩家靠近 Pit 入口且 (已按下 Pit 鍵 `wantsToPit` 或 輪胎極低)
+						
+						// ==========================================================
+						// 判斷 1: 玩家靠近 Pit 入口【且】滿足 Pit 站條件 (進入 Pit)
+						// ==========================================================
 						if (distToEntry < PIT_ENTRY_TRIGGER_DIST && (wantsToPit || playerAvgHealth < 20)) { 
-							playerAutoDriving = true; // 啟動自動駕駛
-							playerPitWaypointIndex = 0; // 從 Pit Waypoint 索引 0 開始
+							
+							// --- 啟動 Pit Lane 自動駕駛 ---
+							playerAutoDriving = true; 
+							playerPitWaypointIndex = 0; 
 							inPit = false;
 							keys = {}; 
 							touch = {};
 							document.getElementById('lapHud').textContent = `PIT LANE - ENTERING`;
 							wantsToPit = false; // 清除 Pit 請求旗標
+
+							// --- HUD 控制 ---
+							if (pitHudPrompt) pitHudPrompt.style.display = 'none'; // 進入 Pit 後隱藏提示
+
+						} 
+						// ==========================================================
+						// 判斷 2: 玩家靠近 Pit 入口【但】不滿足 Pit 站條件 (顯示提示)
+						// ==========================================================
+						else if (distToEntry < PIT_ENTRY_TRIGGER_DIST) {
+							
+							// --- HUD 控制 ---
+							if (pitHudPrompt) {
+								// 顯示提示文字 (PC 用戶 P，手機用戶點擊按鈕)
+								pitHudPrompt.textContent = `PIT (P)`; 
+								pitHudPrompt.style.display = 'block'; 
+							}
+						} 
+						// ==========================================================
+						// 判斷 3: 玩家離入口太遠 (隱藏提示)
+						// ==========================================================
+						else {
+							// --- HUD 控制 ---
+							if (pitHudPrompt) pitHudPrompt.style.display = 'none'; 
 						}
 					}
 
@@ -2120,6 +2152,20 @@ document.addEventListener('DOMContentLoaded', () => {
 							isBoosting = false;
 						});
 					}
+					
+					const pitBtn = document.getElementById('pitBtn');
+					if (pitBtn) {
+						pitBtn.addEventListener('touchstart', e => {
+							e.preventDefault();
+							// 只有在競速中且非自動駕駛時，才能請求進 Pit
+							if (gameState === 'racing' && !playerAutoDriving) {
+								wantsToPit = true; 
+							}
+						});
+						
+						// Pit 按鈕不需要 touchend 邏輯，因為 wantsToPit 在 Pit 邏輯執行後會被重設為 false。
+					}
+					
 				}
 				
 				window.addEventListener('keydown', e => {
