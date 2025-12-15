@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let player = null, allCars = [], gameState = 'title', mode = '', countdown = 0;
         let selectedCar = 0, playerCarImg = new Image(), trackImg = null;
-        let keys = {}, touch = {}, lap = 0, totalLaps = 3, raceFinished = false, currentTrack = 0;
+        let keys = {}, touch = {}, lap = 0, totalLaps = 5, raceFinished = false, currentTrack = 0;
         let boostParticles = []; // 加速特效粒子
 		let tireMarks = [];      // 新增：胎痕/飄移痕跡
 		let dustParticles = [];  // 新增：塵土粒子
@@ -890,7 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			gameState = 'countdown';
 			countdownStartTime = Date.now();
 			lap = 0;
-			totalLaps = 3;
+			totalLaps = 5;
 			raceFinished = false;
 			player.prevY = player.y;
 			document.getElementById('lapHud').textContent = `LAP 0/${totalLaps}`;
