@@ -2,8 +2,6 @@
 // Cyber Formula Mini Race - 遊戲引擎
 // ================================================
 
-console.log('[game.js] 遊戲引擎加載中...');
-
 // Main game initialization
 document.addEventListener('DOMContentLoaded', () => {
         const SCALE = 5.0; // Scale factor for game coordinates to pixels
@@ -28,6 +26,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let boostParticles = []; // 加速特效粒子
 		let tireMarks = [];      // 新增：胎痕/飄移痕跡
 		let dustParticles = [];  // 新增：塵土粒子
+		
+		let wantsToPit = false; // 玩家按下按鈕決定入 Pit
+		let playerAutoDriving = false; // 玩家是否處於 Pit 站自動駕駛狀態
+		let playerPitWaypointIndex = 0; // 玩家 Pit 站路徑 Waypoint 索引
+		
         
         // Speed calculation constants
         const BASE_MAX_SPEED = 30;  // Base max speed for all cars
@@ -56,6 +59,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const BOOST_RECHARGE_RATE = 0.0015; // Slightly reduced recharge rate to balance
         const BOOST_SPEED_MULTIPLIER = 1.4; // 40% speed increase
         let boostCooldown = 0;
+		// 新增: 輪胎狀態和 Pit 相關變數
+		let tireHealth = [100, 100, 100, 100]; // 0:FL, 1:FR, 2:RL, 3:RR (範圍 0-100, 僅供玩家使用)
+		let inPit = false; // 玩家是否正在 Pit 站
+		let pitTimer = 0; // 記錄 Pit 站換胎時間 (秒)
+		const PIT_STOP_DURATION = 5.0; // Pit 站換胎時間 (秒)
+		const MUST_PIT_THRESHOLD = 30; // 輪胎血量低於此值 AI 必須進 Pit
+		const PIT_LANE_SPEED_LIMIT = 12.0; // Pit Lane 的速度限制
+		const PIT_PARKING_DIST_SCALED = 15; // 停車距離 (未縮放，我們會在邏輯中乘以 SCALE)
+		const CRITICAL_HEALTH = 5; // 輪胎血量低於此值玩家將強制停止 (Game Over)
+
+		// 輪胎損耗常數
+		const NORMAL_WEAR_RATE = 0.05; // 基礎損耗 (每秒)
+		const DRIFT_WEAR_MULTIPLIER = 1.0; // 漂移額外損耗乘數 (1.0 = 雙倍損耗)
+		const PIT_ENTRY_WAYPOINT_INDEX = -2; // **Placeholder: Pit 站入口點** (實際應根據賽道 Waypoints 決定)
+		const PIT_STOP_WAYPOINT_INDEX = -1; // **Placeholder: Pit 站停車點** (實際應根據賽道 Waypoints 決定)
 		
 		// 在 init 或 script 開頭加入這個變數
 		let sandPattern = null;
@@ -68,7 +86,10 @@ document.addEventListener('DOMContentLoaded', () => {
 		// Add this with other global variables at the top of the file
 		let lastCountdownTime = 0;  // Add this line
 		let countdownInterval = null;
-		let countdownStartTime = 0;		
+		let countdownStartTime = 0;	
+
+		const tireMonitorCanvas = document.getElementById('tireMonitorCanvas');
+		const tireMonitorCtx = tireMonitorCanvas ? tireMonitorCanvas.getContext('2d') : null;		
 		
 		
 		// 新增一個函數：預先產生沙地材質 (只執行一次，效能更好)
@@ -297,6 +318,62 @@ document.addEventListener('DOMContentLoaded', () => {
 			dashCtx.shadowBlur = 0;
 			dashCtx.fillText("KM/H", cx, cy - 25);
 		}
+
+		// 新增: 繪製 5 個紅燈倒數
+		function drawStartLights(ctx, W, H, countdownStartTime) {
+			if (gameState !== 'countdown' || !countdownStartTime) return;
+			
+			const timeElapsed = (Date.now() - countdownStartTime);
+			// 根據經過時間計算當前點亮的燈數 (每 1000ms 點亮一個)
+			// 0ms: 0 燈, 1000ms: 1 燈, 5000ms: 5 燈
+			const lightNumber = Math.floor(timeElapsed / 1000); 
+			
+			ctx.save();
+			
+			const lights = 5;
+			const lightRadius = 30;
+			const lightGap = 20;
+			// 計算 5 顆燈的總寬度 (5 * 60px 直徑 + 4 * 20px 間隔)
+			const totalWidth = lights * 2 * lightRadius + (lights - 1) * lightGap; 
+			let startX = (W / 2) - (totalWidth / 2) + lightRadius;
+			let startY = 150; // 繪製在螢幕頂部下方
+			
+			// 1. 繪製燈號
+			for (let i = 0; i < lights; i++) {
+				ctx.beginPath();
+				const x = startX + i * (2 * lightRadius + lightGap);
+				ctx.arc(x, startY, lightRadius, 0, Math.PI * 2);
+				
+				// 判斷燈的狀態
+				if (lightNumber > i && lightNumber <= lights) {
+					// 燈已點亮 (紅燈)
+					ctx.fillStyle = 'rgba(255, 0, 0, 1.0)';
+					ctx.shadowBlur = 15;
+					ctx.shadowColor = '#f00';
+				} else {
+					// 燈未點亮 (暗色底座)
+					ctx.fillStyle = 'rgba(30, 30, 30, 0.6)';
+					ctx.shadowBlur = 0;
+					ctx.shadowColor = 'transparent';
+				}
+				
+				ctx.fill();
+			}
+			
+			// 2. 繪製 "GO!" 文字 (在所有燈都熄滅後出現)
+			if (lightNumber >= lights) { // timeElapsed >= 5000ms
+				ctx.font = 'bold 150px Rajdhani, sans-serif';
+				ctx.textAlign = 'center';
+				ctx.fillStyle = '#0f0'; // 綠色
+				ctx.shadowBlur = 20;
+				ctx.shadowColor = '#0f0';
+				// 放置在畫面中央
+				ctx.fillText('GO!', W / 2, H / 2); 
+			}
+			
+			ctx.restore();
+		}
+
 		
 		// 導入完整的飄移物理模型
 		function updateCarPhysics(car, acceleration, steeringAngle) {
@@ -751,12 +828,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			const GRID_SPACING = 200;
 			const ROW_SPACING = 120;
 
-			// Make sure we have a valid track
-			if (!t) {
-				console.error('Invalid track:', currentTrack);
-				return;
-			}
-
 			// In the startRace function, after the GRID_SPACING and ROW_SPACING declarations
 			if (mode === 'championship') {
 				const a = CARSPECS.map((_, i) => i).filter(i => i !== selectedCar);
@@ -815,7 +886,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			};
 
 			// Reset countdown and game state
-			countdown = 3; // Start from 3
+			// countdown = 3; // 移除: 不再使用此變數
 			gameState = 'countdown';
 			countdownStartTime = Date.now();
 			lap = 0;
@@ -824,52 +895,35 @@ document.addEventListener('DOMContentLoaded', () => {
 			player.prevY = player.y;
 			document.getElementById('lapHud').textContent = `LAP 0/${totalLaps}`;
 
+			// [新增] 隱藏舊的 HTML 倒數文字元素
+			const countdownElement = document.getElementById('countdown');
+			if (countdownElement) {
+				countdownElement.style.display = 'none'; 
+			}
 			
-			// Start the countdown interval
-			countdownInterval = setInterval(() => {
-				const countdownElement = document.getElementById('countdown');
-				
-				if (!countdownElement) return;
-				
-				countdownElement.style.display = 'block';
-				countdownElement.style.fontSize = '200px';
-				countdownElement.style.color = '#fff';
-				countdownElement.style.textShadow = '0 0 10px #000';
-				
-				if (countdown > 1) {
-					countdownElement.textContent = countdown;
-					countdown--;
-				} else if (countdown === 1) {
-					countdownElement.textContent = 'GO!';
-					countdownElement.style.color = '#0f0';
-					countdown--;
-				} else {
-					// Countdown finished
-					gameState = 'racing';
-					countdownElement.style.display = 'none';
-					clearInterval(countdownInterval);
-					countdownInterval = null;
-					
-					// Force start the game loop
-					if (typeof loop === 'function' && !raceFinished) {
-						requestAnimationFrame(loop);
-					}
-				}
-			}, 1000);
+			// [新增] 設定總倒數時間 (5 燈 * 1 秒 + 1 秒 GO = 6 秒)
+			const COUNTDOWN_DURATION_MS = 6000;
+			
+			// 清除舊的計時器
+			if (countdownInterval) {
+				clearTimeout(countdownInterval); // 使用 clearTimeout 來清除，因為下面改用 setTimeout
+			}
 
-			// Ensure the loop is running during countdown (so it can render)
+			// 使用 setTimeout 僅用於在倒數結束時切換到 racing 狀態
+			countdownInterval = setTimeout(() => {
+				// 倒數結束
+				gameState = 'racing';
+				countdownInterval = null;
+				// Force start the game loop if (typeof loop === 'function' && !raceFinished) { requestAnimationFrame(loop); }
+			}, COUNTDOWN_DURATION_MS);
+
+			// 確保 loop 正在運行以便繪製燈號
 			if (typeof loop === 'function') {
 				requestAnimationFrame(loop);
 			}
 		}
 
 		function emitSpeedFlameForCar(car, isPlayer) {
-			console.log('Emitting flame effect:', { 
-				isPlayer, 
-				speed: car.speed, 
-				forwardSpeed: car.forwardSpeed,
-				angle: car.angle 
-			});			
 			const jets = [-1, 1];
 			for (let j = 0; j < jets.length; j++) {
 				const side = jets[j];
@@ -1054,6 +1108,113 @@ document.addEventListener('DOMContentLoaded', () => {
 		// Add event listeners
 		window.addEventListener('keydown', handleKeyDown);
 		window.addEventListener('keyup', handleKeyUp);
+		
+		// ----------------------------------------------------
+		// 新增: 輪胎損耗計算函式
+		// ----------------------------------------------------
+		function updateTireWear(car, deltaTime) {
+			// 只有在非 Pit 站狀態下才損耗
+			if (!car.tireHealth || car.inPit) return;
+			
+			const TIRE_MARK_THRESHOLD = 0.18; 
+			const MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 26.0; 
+			const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.18; 
+			
+			// 1. 判斷是否漂移 (使用 AI/玩家共用邏輯)
+			const forwardSpeed = Math.abs(car.forwardSpeed || 0);
+			const driftAngle = Math.abs(car.driftAngle || 0);
+			const turnRate = car.lastTurnRate;
+			
+			const isDrifting = (forwardSpeed > DRIFT_SPEED_THRESHOLD) && 
+							   (Math.abs(turnRate) > 0.012 || Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD || driftAngle > 0.12);
+
+			// 2. 基礎損耗 (正常行駛)
+			let totalWear = NORMAL_WEAR_RATE * deltaTime;
+
+			// 3. 漂移額外損耗
+			if (isDrifting) {
+				totalWear += NORMAL_WEAR_RATE * DRIFT_WEAR_MULTIPLIER * deltaTime;
+			}
+
+			// 4. 套用於所有輪胎
+			for (let i = 0; i < car.tireHealth.length; i++) {
+				car.tireHealth[i] = Math.max(0, car.tireHealth[i] - totalWear);
+			}
+		}		
+		
+		// ----------------------------------------------------
+		// 新增: 繪製輪胎監控器 (在 loop 函式之外)
+		// ----------------------------------------------------
+// game.js 中，替換 drawTireMonitor 函式定義
+
+	function drawTireMonitor(car, ctx) {
+		if (!ctx) return;
+		
+		// 確保 car.tireHealth 已經初始化 (防止錯誤)
+		if (!car.tireHealth) {
+			car.tireHealth = [100, 100, 100, 100];
+		}
+		
+		// 【修正：移除 ctx.save() 和 ctx.restore()】
+		
+		ctx.clearRect(0, 0, 100, 100);
+		
+		// 繪製車身簡易圖形
+		ctx.fillStyle = '#444444';
+		ctx.fillRect(30, 10, 40, 80); // 車身 (佔用 40x80)
+		
+		// 繪製四個輪胎的健康度
+		const health = car.tireHealth;
+		
+		const getColor = (h) => {
+			if (h > 60) return '#00FF00'; // 綠色 (Green)
+			if (h > 30) return '#FFFF00'; // 黃色 (Yellow)
+			return '#FF0000'; // 紅色 (Red)
+		};
+		
+		// 輪胎位置: [FL, FR, RL, RR] (前左, 前右, 後左, 後右)
+		const positions = [
+			{x: 10, y: 15, h: 20, w: 10}, // FL (前左)
+			{x: 80, y: 15, h: 20, w: 10}, // FR (前右)
+			{x: 10, y: 65, h: 20, w: 10}, // RL (後左)
+			{x: 80, y: 65, h: 20, w: 10}  // RR (後右)
+		];
+		
+		// 繪製輪胎狀態方塊
+		positions.forEach((pos, index) => {
+			ctx.fillStyle = getColor(health[index]);
+			ctx.fillRect(pos.x, pos.y, pos.w, pos.h);
+			
+			// 繪製磨損程度 (用黑色覆蓋)
+			const wearHeight = pos.h * (100 - health[index]) / 100;
+			ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+			ctx.fillRect(pos.x, pos.y, pos.w, wearHeight);
+			
+			// 繪製邊框
+			ctx.strokeStyle = 'white';
+			ctx.strokeRect(pos.x, pos.y, pos.w, pos.h);
+		});
+
+		// 繪製平均值文字
+		const avg = health.reduce((a, b) => a + b, 0) / 4;
+		ctx.font = '10px Arial';
+		ctx.fillStyle = getColor(avg);
+		ctx.textAlign = 'center';
+		ctx.fillText(`AVG: ${Math.round(avg)}%`, 50, 98);
+	}
+		// ----------------------------------------------------
+		// 在 loop 函式中呼叫 drawTireMonitor
+		// ----------------------------------------------------
+		// 在 loop 函式中的 HUD 繪圖區塊 (通常是最後面)
+
+		if (gameState !== 'title') {
+			drawMinimap(ctx, W, H);
+			drawTireMonitor(ctx, W, H); // [新增] 呼叫輪胎監控器
+			
+		}
+
+
+		
 
 		function loop() {
 			if (gameState === 'paused' || raceFinished) {
@@ -1080,6 +1241,107 @@ document.addEventListener('DOMContentLoaded', () => {
 					// 賽道路徑
 					drawCurrentTrackRoad(ctx, offsetX, offsetY);
 					drawStartGrid(ctx, TRACKS[currentTrack], SCALE, offsetX, offsetY);
+					
+					// --- Pit Lane 可視化 (放在繪製賽道後，繪製車輛前) ---
+					const trackData = TRACKS[currentTrack];
+					const PIT_LANE_WIDTH = 40 * SCALE;
+					const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
+					const RENDER_PARKING_INDEX = PIT_WAYPOINTS_COUNT >= 3 ? PIT_WAYPOINTS_COUNT - 3 : -1;
+
+					if (trackData && trackData.pitWaypoints && trackData.pitWaypoints.length > 1) {
+						ctx.save();
+						
+						// 1. 繪製實體 Pit Lane 路面 (灰色)
+						ctx.fillStyle = '#555555'; // 假設賽道/路面使用深灰色
+
+						// 擴展路徑以繪製一個封閉的 Pit Lane 區域
+						ctx.beginPath();
+						
+						// a. 沿著 Waypoints 繪製一側邊界
+						trackData.pitWaypoints.forEach((wp, index) => {
+							const x = wp.x * SCALE - player.x + W / 2;
+							const y = wp.y * SCALE - player.y + H / 2;
+							const dx = (index < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[index + 1].x * SCALE - wp.x * SCALE : wp.x * SCALE - trackData.pitWaypoints[index - 1].x * SCALE;
+							const dy = (index < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[index + 1].y * SCALE - wp.y * SCALE : wp.y * SCALE - trackData.pitWaypoints[index - 1].y * SCALE;
+							
+							const angle = Math.atan2(dy, dx);
+							const perpAngle = angle + Math.PI / 2;
+							
+							// 將路徑向外偏移 PIT_LANE_WIDTH/2
+							const offsetX = Math.cos(perpAngle) * PIT_LANE_WIDTH / 2;
+							const offsetY = Math.sin(perpAngle) * PIT_LANE_WIDTH / 2;
+							
+							if (index === 0) {
+								ctx.moveTo(x + offsetX, y + offsetY);
+							} else {
+								ctx.lineTo(x + offsetX, y + offsetY);
+							}
+						});
+
+						// b. 繪製另一側邊界 (反向繪製)
+						for (let i = trackData.pitWaypoints.length - 1; i >= 0; i--) {
+							const wp = trackData.pitWaypoints[i];
+							const x = wp.x * SCALE - player.x + W / 2;
+							const y = wp.y * SCALE - player.y + H / 2;
+							const dx = (i < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[i + 1].x * SCALE - wp.x * SCALE : wp.x * SCALE - trackData.pitWaypoints[i - 1].x * SCALE;
+							const dy = (i < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[i + 1].y * SCALE - wp.y * SCALE : wp.y * SCALE - trackData.pitWaypoints[i - 1].y * SCALE;
+							
+							const angle = Math.atan2(dy, dx);
+							const perpAngle = angle + Math.PI / 2;
+							
+							// 將路徑向內偏移 -PIT_LANE_WIDTH/2
+							const offsetX = Math.cos(perpAngle) * (-PIT_LANE_WIDTH / 2);
+							const offsetY = Math.sin(perpAngle) * (-PIT_LANE_WIDTH / 2);
+							
+							ctx.lineTo(x + offsetX, y + offsetY);
+						}
+
+						ctx.closePath();
+						ctx.fill(); // 填充 Pit Lane 路面
+						
+						// 2. 繪製白色實線邊界 (沿著 Pit Waypoints 繪製)
+						ctx.strokeStyle = 'white'; 
+						ctx.lineWidth = 2 * SCALE; // 實線寬度
+
+						ctx.beginPath();
+						trackData.pitWaypoints.forEach((wp, index) => {
+							const x = wp.x * SCALE - player.x + W / 2;
+							const y = wp.y * SCALE - player.y + H / 2;
+							
+							if (index === 0) {
+								ctx.moveTo(x, y);
+							} else {
+								ctx.lineTo(x, y);
+							}
+						});
+						// 使用 stroke() 繪製白色實線
+						ctx.stroke();
+
+						// 3. 繪製 Pit Stop 停車位標記 (橘色)
+						if (RENDER_PARKING_INDEX >= 0) {
+							const wp = trackData.pitWaypoints[RENDER_PARKING_INDEX];
+							const x = wp.x * SCALE - player.x + W / 2;
+							const y = wp.y * SCALE - player.y + H / 2;
+
+							ctx.fillStyle = 'rgba(255, 165, 0, 0.9)'; // 橘色停車格
+							const parkingSize = CARWIDTH * SCALE * 0.7; // 稍大一點的停車位
+							ctx.fillRect(x - parkingSize / 2, y - parkingSize / 2, parkingSize, parkingSize); 
+							
+							// 白色邊框
+							ctx.strokeStyle = 'white';
+							ctx.lineWidth = 3;
+							ctx.strokeRect(x - parkingSize / 2, y - parkingSize / 2, parkingSize, parkingSize);
+
+							// 文字標記
+							ctx.font = '30px Arial';
+							ctx.fillStyle = 'white';
+							ctx.textAlign = 'center';
+							ctx.fillText('PIT STOP', x, y + 10);
+						}
+						
+						ctx.restore();
+					}
+					// -----------------------
 
 					// 繪製胎痕 (線段繪製)
 					ctx.save();
@@ -1127,11 +1389,137 @@ document.addEventListener('DOMContentLoaded', () => {
 					if (gameState === 'racing' && !raceFinished) {
 						
 						// AI 獨立摩擦力設定 (已調整)0.985
-						const FORWARD_DAMPING_AI = 0.984; 
+						const FORWARD_DAMPING_AI = 0.984; 
+						const deltaTime = 1/60; // 假設 60 FPS 的 deltaTime
+						const trackData = TRACKS[currentTrack]; // 確保 trackData 存在
+
+						// 【重要安全檢查】：如果賽道資料不存在，直接跳過 AI 迴圈
+						if (!trackData) {
+							// 繼續執行 Player VFX 邏輯 (如果有的話)
+							// ... (Player VFX logic)
+							return; 
+						}
+						
+						// 預先計算 Pit Waypoints 索引
+						// 需確保 track.js 中的 pitWaypoints 至少有 3 個點 (進入點 -> 停車點 -> 出口點)
+						const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
+						
+						// 停車點為倒數第二點 (例如長度為 4, 索引為 2)
+						const PIT_PARKING_INDEX = PIT_WAYPOINTS_COUNT > 2 ? PIT_WAYPOINTS_COUNT - 2 : -1; 
+						// 出口點為最後一點 (例如長度為 4, 索引為 3)
+						const PIT_EXIT_INDEX = PIT_WAYPOINTS_COUNT > 0 ? PIT_WAYPOINTS_COUNT - 1 : -1; 
+						const PIT_LANE_DIST_SCALED = 50 * SCALE; // Waypoint 追蹤距離
 
 						allCars.forEach(car => {
+							if (car.isPlayer) return; // 跳過玩家車輛
+
 							const prevAngle = car.angle;
-							followWaypoints(car);
+							
+							// *** [NEW] 輪胎健康度初始化 (每輛車) ***
+							if (car.tireHealth == null) {
+								car.tireHealth = [100, 100, 100, 100];
+								car.inPit = false;
+								car.pitTimer = 0;
+								car.pitCondition = 'out'; // 'out', 'entering', 'pitting', 'exiting'
+								car.lapsSincePit = 0;
+								car.pitWaypointIndex = 0; // NEW: AI 追蹤 Pit Lane 路徑的索引
+							}
+							
+							// --- 輪胎損耗計算 ---
+							updateTireWear(car, deltaTime); 
+							
+							// ------------------------------------
+							// --- Pit 站決策與執行 (AI) 重構 ---
+							// ------------------------------------
+							
+							if (car.inPit) {
+								// 狀態 3: Pitting (換胎中) - 停車不動
+								if (car.pitTimer < PIT_STOP_DURATION) {
+									car.pitTimer += deltaTime;
+									car.speed = 0;
+									car.forwardSpeed = 0;
+									car.sideSpeed = 0;
+								} else {
+									// 換胎完成 -> 進入 Exiting 狀態
+									car.tireHealth = [100, 100, 100, 100];
+									car.inPit = false;
+									car.pitCondition = 'exiting';
+									car.pitTimer = 0;
+									car.lapsSincePit = 0;
+									// 從停車點的下一個 Waypoint 開始追蹤
+									car.pitWaypointIndex = PIT_PARKING_INDEX + 1; 
+								}
+								
+							} else if (car.pitCondition === 'entering' || car.pitCondition === 'exiting') {
+								
+								// 狀態 2 & 4: Entering / Exiting (Pit Lane 自動駕駛)
+								const targetWaypoint_unscaled = trackData.pitWaypoints[car.pitWaypointIndex];
+								
+								if (targetWaypoint_unscaled) {
+									// 自動駕駛邏輯
+									const targetX_scaled = targetWaypoint_unscaled.x * SCALE;
+									const targetY_scaled = targetWaypoint_unscaled.y * SCALE;
+									const distToTarget_scaled = Math.hypot(targetX_scaled - car.x, targetY_scaled - car.y);
+
+									const targetAngle = Math.atan2(targetY_scaled - car.y, targetX_scaled - car.x);
+									let angleDiff = targetAngle - car.angle;
+									angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+									car.angle += angleDiff * 0.1; 
+
+									// Pit Lane 限速
+									car.forwardSpeed = Math.min(car.forwardSpeed || 0, 7.0); 
+									if (car.forwardSpeed < 4.0) car.forwardSpeed = 4.0;
+									car.sideSpeed = 0; 
+									
+									// 移動更新
+									car.x += Math.cos(car.angle) * car.forwardSpeed * MOVE_SCALE;
+									car.y += Math.sin(car.angle) * car.forwardSpeed * MOVE_SCALE;
+									car.speed = car.forwardSpeed;
+									
+									// 檢測是否到達目標 Waypoint / 停車
+									if (car.pitWaypointIndex === PIT_PARKING_INDEX && distToTarget_scaled < 15 * SCALE) {
+										// 到達 Pit Stop 停車點 -> 進入 Pitting 狀態
+										car.pitCondition = 'pitting';
+										car.inPit = true;
+									} else if (distToTarget_scaled < PIT_LANE_DIST_SCALED) {
+										// 正常移動到下一個 Waypoint
+										car.pitWaypointIndex++;
+									}
+
+								} else {
+									// 已完成所有 Pit Lane Waypoints (Pit Exit)
+									car.pitCondition = 'out'; 
+									car.forwardSpeed = 10.0; // 緩慢加速回到賽道速度
+									car.pitWaypointIndex = 0; // 重設索引
+								}
+								
+							} else {
+								// 狀態 1: Out (賽道上)
+								const avgHealth = car.tireHealth.reduce((a, b) => a + b, 0) / 4;
+								
+								// Pit 決策: 輪胎低於閾值且靠近 Pit 入口
+								if (avgHealth < MUST_PIT_THRESHOLD && trackData.pitEntry) {
+									const unscaledCarX = car.x / SCALE;
+									const unscaledCarY = car.y / SCALE;
+
+									const dx = unscaledCarX - trackData.pitEntry.x;
+									const dy = unscaledCarY - trackData.pitEntry.y;
+									const distToEntry = Math.hypot(dx, dy);
+
+									const PIT_ENTRY_DIST = 150; 
+									if (distToEntry < PIT_ENTRY_DIST) {
+										car.pitCondition = 'entering';
+										car.pitWaypointIndex = 0; // 從 Pit Lane 第一個 Waypoint 開始
+									}
+								}
+								
+								// 賽道上的 Waypoint 追蹤 (只有在賽道上時才呼叫)
+								followWaypoints(car); 
+							}
+
+							// ---------------------
+							// --- 摩擦力/速度/VFX 邏輯 (無論狀態為何都執行) ---
+							// ---------------------
 							car.forwardSpeed *= FORWARD_DAMPING_AI;
 							car.speed = Math.hypot(car.forwardSpeed || 0, car.sideSpeed || 0);
 							let turnRate = car.angle - prevAngle;
@@ -1142,9 +1530,9 @@ document.addEventListener('DOMContentLoaded', () => {
 							// ---------------------
 							// --- 內聯 AI 胎痕/塵土生成 ---
 							// ---------------------
-							const TIRE_MARK_THRESHOLD = 0.18; 
-							const AI_MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 26.0; 
-							const DRIFT_SPEED_THRESHOLD = AI_MAX_SPEED * 0.18; 
+							const TIRE_MARK_THRESHOLD = 0.18; 
+							const AI_MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 26.0; 
+							const DRIFT_SPEED_THRESHOLD = AI_MAX_SPEED * 0.18; 
 							
 							const aiForward = Math.abs(car.forwardSpeed || 0);
 							const aiDriftAmt = Math.abs(car.driftAngle || 0);
@@ -1154,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
 							const rearY = car.y + Math.sin(car.angle + Math.PI) * (CARHEIGHT / 2);
 							const perpX = Math.cos(car.angle + Math.PI / 2);
 							const perpY = Math.sin(car.angle + Math.PI / 2);
-							const lateralOffset = CARWIDTH / 2 * 0.7; 
+							const lateralOffset = CARWIDTH / 2 * 0.7; 
 							
 							const currentX_L = rearX + perpX * lateralOffset;
 							const currentY_L = rearY + perpY * lateralOffset;
@@ -1168,15 +1556,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 							if (isDrifting) {
 								// 胎痕壽命 60 幀
-								const TIRE_MARK_LIFE = 60; 
+								const TIRE_MARK_LIFE = 60; 
 
 								tireMarks.push({
 									x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
-									life: TIRE_MARK_LIFE 
+									life: TIRE_MARK_LIFE 
 								});
 								tireMarks.push({
 									x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
-									life: TIRE_MARK_LIFE 
+									life: TIRE_MARK_LIFE 
 								});
 								
 								emitDustForCar(car, false, AI_MAX_SPEED);
@@ -1195,17 +1583,6 @@ document.addEventListener('DOMContentLoaded', () => {
 							const AI_SPEED_FLAME_THRESHOLD = Math.min(AI_MAX_SPEED * 0.4, AI_SPEED_FLAME_FIXED);
 							const aiTotalSpeed = Math.abs(car.speed || 0);
 							
-							// Debug logging
-							const shouldDebug = true; // Enable debug logs to help troubleshoot
-							if (aiTotalSpeed > AI_MAX_SPEED * 0.3) { // Lowered speed threshold for debugging
-								console.log('AI Speed:', aiTotalSpeed.toFixed(2), 
-									'Threshold:', AI_SPEED_FLAME_THRESHOLD.toFixed(2),
-									'Forward:', (car.forwardSpeed || 0).toFixed(2),
-									'Accel:', (car.lastAIAcceleration || 0).toFixed(2),
-									'TurnRate:', (turnRate || 0).toFixed(4),
-									'FlameTimer:', (car.speedFlameTimer || 0).toFixed(2));
-							}
-
 							// In the AI car update section, replace the flame effect logic with:
 							if (car.isBoosting) {
 								if (Math.random() < 0.7) emitBoostForCar(car, false);
@@ -1224,18 +1601,9 @@ document.addEventListener('DOMContentLoaded', () => {
 									emitSpeedFlameForCar(car, false);
 								}
 
-								// Debug info - show current speed and flame status
-								if (Math.random() < 0.05) {  // Log only 5% of the time
-									console.log('AI Flame Debug:', {
-										car: car.spec.image.split('/').pop(),
-										currentSpeed: currentSpeed.toFixed(1),
-										maxSpeed: carMaxSpeed.toFixed(1),
-										speedRatio: speedRatio.toFixed(2),
-										flameActive: (speedRatio >= speedRatioForFlame) ? 'YES' : 'NO'
-									});
-								}
+
 							}
-						});
+						}); // 結束 allCars.forEach
 						
 						// Player speed flame effect (orange) when near max speed (within 2 km/h) and not boosting
 						const wantsForwardVfx = (keys.ArrowUp || touch.up);
@@ -1243,20 +1611,20 @@ document.addEventListener('DOMContentLoaded', () => {
 						const playerSteeringActive = (keys.ArrowLeft || touch.left || keys.ArrowRight || touch.right);
 						
 						if (!playerBoostingActive && !playerSteeringActive && wantsForwardVfx) {
-						    // Calculate player's max speed based on spec
-						    const playerMaxSpeed = getCarMaxSpeed(player);
-						    const speedFlameThreshold = playerMaxSpeed - 6.2; // Flame starts at max speed - 2 km/h
-						    
-						    if (player.speed > speedFlameThreshold) {
-						        // Calculate flame intensity based on how close to max speed
-						        const speedRatio = (player.speed - speedFlameThreshold) / 2; // Normalize to 0-1 range for 2 km/h window
-						        const flameIntensity = Math.min(1, Math.max(0, speedRatio));
-						        
-						        // Emit flame with probability based on intensity
-						        if (Math.random() < flameIntensity * 0.8) {
-						            emitSpeedFlameForCar(player, true);
-						        }
-						    }
+						    // Calculate player's max speed based on spec
+						    const playerMaxSpeed = getCarMaxSpeed(player);
+						    const speedFlameThreshold = playerMaxSpeed - 6.2; // Flame starts at max speed - 2 km/h
+						    
+						    if (player.speed > speedFlameThreshold) {
+						        // Calculate flame intensity based on how close to max speed
+						        const speedRatio = (player.speed - speedFlameThreshold) / 2; // Normalize to 0-1 range for 2 km/h window
+						        const flameIntensity = Math.min(1, Math.max(0, speedRatio));
+						        
+						        // Emit flame with probability based on intensity
+						        if (Math.random() < flameIntensity * 0.8) {
+						            emitSpeedFlameForCar(player, true);
+						        }
+						    }
 						}
 					}
 							
@@ -1327,12 +1695,13 @@ document.addEventListener('DOMContentLoaded', () => {
 						ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
 					}
 					ctx.restore();
-					
+				
 					// 倒數計時
 					// In the game loop, update the countdown logic
 					// Countdown is now handled by the interval
 					if (gameState === 'countdown') {
 						// The countdown is now handled by the interval
+						drawStartLights(ctx, W, H, countdownStartTime);
 						requestAnimationFrame(loop);
 						return; // Skip the rest of the loop while counting down
 					}
@@ -1340,120 +1709,241 @@ document.addEventListener('DOMContentLoaded', () => {
 					// 玩家控制邏輯
 					if (gameState === 'racing' && !raceFinished) {
 						player.raceTime++;
+						const deltaTime = 1/60;
+						//const trackData = TRACKS[currentTrack]; 
 						
-						// 獨立的摩擦力設定 (沿用舊版)0.999
-						const FORWARD_DAMPING_PLAYER = 0.997;
+						// 【重要安全檢查】: 如果 trackData 不存在，應立即跳出，防止後續報錯。
+						if (!trackData) return; 
 						
-						// 1. 設置轉向率和加速度 
-						const STEERING_RATE = 0.038 * player.spec.handling * 0.38;
-						const ACCEL_RATE = player.spec.acceleration * 0.0085 * SPEED_UNIT_SCALE;
-						const MAX_SPEED = 34;
+						// --- 輪胎損耗計算 ---
+						player.tireHealth = tireHealth;
+						updateTireWear(player, deltaTime);
+						tireHealth = player.tireHealth;
+						const playerAvgHealth = tireHealth.reduce((a, b) => a + b, 0) / 4;
 						
-						let acceleration = 0;
-						let steering = 0;
-						
-						const wantsForward = (keys.ArrowUp || touch.up);
-						if (wantsForward) acceleration = ACCEL_RATE;
-						if (keys.ArrowDown || touch.down) {
-							// softer brake: damp speed toward 0; allow very gentle reverse
-							if ((player.forwardSpeed || 0) > 0.2) {
-								player.forwardSpeed *= 0.92;
-								acceleration = 0;
-							} else {
-								acceleration = -0.18;
-							}
-						}
-						if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
-						if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
-						
-						const boostingActive = isBoosting && wantsForward && boostMeter > 0 && boostCooldown <= 0;
-						const maxSpeedNow = boostingActive ? (MAX_SPEED * BOOST_SPEED_MULTIPLIER) : MAX_SPEED;
-						if (boostingActive) {
-							acceleration *= 1.25;
-							boostMeter = Math.max(0, boostMeter - BOOST_DRAIN_RATE);
-							if (Math.random() < 0.7) emitBoostForCar(player, true);
-							if (boostMeter <= 0) boostCooldown = 60;
-						} else {
-							if (boostCooldown <= 0 && boostMeter < 1.0) {
-								boostMeter = Math.min(1.0, boostMeter + BOOST_RECHARGE_RATE);
-							}
-						}
-						
-						// --- 玩家【高級飄移物理模型】---
-						steering = Math.max(-0.4, Math.min(steering, 0.4));
-						
-						player.forwardSpeed = (player.forwardSpeed || player.speed || 0) + acceleration;
-						// prevent snapping into fast reverse
-						const MAX_REVERSE_SPEED = 3.0;
-						player.forwardSpeed = Math.max(-MAX_REVERSE_SPEED, Math.min(player.forwardSpeed, maxSpeedNow));
-						
-						// 高速時降低轉向靈敏度，避免「瞬間轉太多」
-						const speedForSteer = Math.abs(player.forwardSpeed);
-						const steerDamp = 1 / (1 + speedForSteer * 0.06);
-						player.angle += steering * steerDamp * player.forwardSpeed / 8;
-						
-						// 飄移物理
-						const sideFrictionFactor = 0.99;
-						const sideSpeedGeneration = 1.2;
-						
-						player.sideSpeed = player.sideSpeed || 0;
-						if (Math.abs(steering) > 0.01) {
-							player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration;
-						}
-						// 限制側滑量，避免轉向時「甩得太誇張」
-						const maxSideSlip = Math.abs(player.forwardSpeed) * 0.7;
-						player.sideSpeed = Math.max(-maxSideSlip, Math.min(player.sideSpeed, maxSideSlip));
-						
-						player.sideSpeed *= sideFrictionFactor;
-						player.forwardSpeed *= FORWARD_DAMPING_PLAYER;
-						
-						const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
-						const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
-						const actualAngle = player.angle + driftAngle;
-						
-						player.x += Math.cos(actualAngle) * totalSpeed * MOVE_SCALE;
-						player.y += Math.sin(actualAngle) * totalSpeed * MOVE_SCALE;
-						
-						player.speed = totalSpeed;
-						player.driftAngle = driftAngle;
-						
-						// --- 胎痕/塵土生成 (玩家) ---
-						const TIRE_MARK_THRESHOLD = 8.0;
-						const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.55;
-						const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
-						
-						const rearX = player.x + Math.cos(player.angle + Math.PI) * (CARHEIGHT / 2);
-						const rearY = player.y + Math.sin(player.angle + Math.PI) * (CARHEIGHT / 2);
-						const perpX = Math.cos(player.angle + Math.PI / 2);
-						const perpY = Math.sin(player.angle + Math.PI / 2);
-						const lateralOffset = CARWIDTH / 2 * 0.7;
-						
-						const currentX_L = rearX + perpX * lateralOffset;
-						const currentY_L = rearY + perpY * lateralOffset;
-						const currentX_R = rearX - perpX * lateralOffset;
-						const currentY_R = rearY - perpY * lateralOffset;
-						
-						const lastX_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.x : currentX_L;
-						const lastY_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.y : currentY_L;
-						const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R;
-						const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
-						
-						if (isDrifting) {
-							const TIRE_MARK_LIFE = 60;
-							tireMarks.push({ x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L, life: TIRE_MARK_LIFE });
-							tireMarks.push({ x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R, life: TIRE_MARK_LIFE });
-							emitDustForCar(player, true, maxSpeedNow);
-						}
-						
-						player.lastTireMarkPosL = { x: currentX_L, y: currentY_L };
-						player.lastTireMarkPosR = { x: currentX_R, y: currentY_R };
-						
-						if (player.speed > 0.6) {
-							emitMoveDustForCar(player);
-						}
+					// -------------------------------------------------------------------
+					// 玩家 Pit 站狀態處理與自動駕駛
+					// -------------------------------------------------------------------
 
+
+					const PIT_LANE_DIST_SCALED = 50 * SCALE;
+					const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
+					// 【關鍵修正】：使用動態索引，確保即使未來 Waypoint 數量變動，停車點仍是倒數第三點。
+					// 停車點的索引 (長度 5 時為 Index 2)
+					const PIT_PARKING_INDEX = PIT_WAYPOINTS_COUNT - 3; 
+					// Pit Exit 的索引 (長度 5 時為 Index 4)
+					const PIT_EXIT_INDEX = PIT_WAYPOINTS_COUNT - 1; 
+
+					// 狀態 1: Pitting (換胎中)
+					if (inPit) {
+						// 確保 inPit 狀態下，車輛是自動駕駛，且速度為 0
+						player.pitTimer = (player.pitTimer || 0) + deltaTime;
+						playerAutoDriving = true; 
+						player.speed = 0;
+						player.forwardSpeed = 0;
+						player.sideSpeed = 0;
+						document.getElementById('lapHud').textContent = `PIT STOP: ${Math.ceil(PIT_STOP_DURATION - player.pitTimer)}s`;
+
+						if (player.pitTimer >= PIT_STOP_DURATION) {
+							// 換胎完成 -> 準備 Exiting
+							player.tireHealth = [100, 100, 100, 100];
+							inPit = false;
+							player.pitTimer = 0;
+							playerPitWaypointIndex = PIT_PARKING_INDEX + 1; // 從停車點的下一個 Waypoint (Index 3) 開始追蹤
+							document.getElementById('lapHud').textContent = `PIT LANE - EXITING`;
+						}
+					} 
+					// 狀態 2: Auto Drive (Entering 或 Exiting)
+					else if (playerAutoDriving && trackData.pitWaypoints && trackData.pitWaypoints.length >= 3) {
+						
+						const targetWaypoint_unscaled = trackData.pitWaypoints[playerPitWaypointIndex];
+						
+						// 檢查目標 Waypoint 是否存在且尚未到達 Pit 出口
+						if (targetWaypoint_unscaled && playerPitWaypointIndex <= PIT_EXIT_INDEX) {
+							const targetX_scaled = targetWaypoint_unscaled.x * SCALE;
+							const targetY_scaled = targetWaypoint_unscaled.y * SCALE;
+
+							// --- Pit Lane Auto Drive 物理邏輯 ---
+							const targetAngle = Math.atan2(targetY_scaled - player.y, targetX_scaled - player.x);
 							
-							// 處理Boost (已在物理計算前處理)
+							let angleDiff = targetAngle - player.angle;
+							angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+							player.angle += angleDiff * 0.1; // 平滑轉向
+
+							// Pit Lane 限速 (【速度已提升】)
+							player.forwardSpeed = Math.min(player.forwardSpeed + 0.1, PIT_LANE_SPEED_LIMIT); 
+							player.sideSpeed = 0; 
+
+							// 移動更新 (取代手動控制)
+							player.x += Math.cos(player.angle) * player.forwardSpeed * MOVE_SCALE;
+							player.y += Math.sin(player.angle) * player.forwardSpeed * MOVE_SCALE;
+							player.speed = player.forwardSpeed;
+
+							const distToTarget_scaled = Math.hypot(targetX_scaled - player.x, targetY_scaled - player.y);
+							
+							// 檢測是否到達 Waypoint / 停車
+							if (playerPitWaypointIndex === PIT_PARKING_INDEX) {
+								// 目標是 Pit Stop 停車點 (Index 2)
+								if (distToTarget_scaled < PIT_PARKING_DIST_SCALED * SCALE) { // 使用已縮放的停車距離
+									// 達成停車條件 -> 進入 Pitting 狀態
+									playerAutoDriving = false; 
+									inPit = true; 
+									player.pitTimer = 0; 
+								}
+							} else if (distToTarget_scaled < PIT_LANE_DIST_SCALED) {
+								// 目標不是停車點，正常移動到下一個 Waypoint
+								playerPitWaypointIndex++;
+							}
+						} else {
+							// 已經到達 Pit Exit Waypoint 之後 (Index > PIT_EXIT_INDEX)
+							playerAutoDriving = false;
+							inPit = false; 
+							player.forwardSpeed = Math.min(player.forwardSpeed || 0, 10.0); // 緩慢加速回到賽道速度
+							player.sideSpeed = 0;
+							document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+							playerPitWaypointIndex = 0; // 重設索引
+						}
+					}
+					// 狀態 3: 賽道上 (檢查是否應啟動 Auto Drive)
+					else if (trackData.pitEntry && !playerAutoDriving) {
+						const unscaledPlayerX = player.x / SCALE;
+						const unscaledPlayerY = player.y / SCALE;
+						
+						const PIT_ENTRY_TRIGGER_DIST = 100 * SCALE;
+
+						const dx = unscaledPlayerX - trackData.pitEntry.x;
+						const dy = unscaledPlayerY - trackData.pitEntry.y;
+						const distToEntry = Math.hypot(dx, dy);
+
+						// 判斷：玩家靠近 Pit 入口且 (已按下 Pit 鍵 `wantsToPit` 或 輪胎極低)
+						if (distToEntry < PIT_ENTRY_TRIGGER_DIST && (wantsToPit || playerAvgHealth < 20)) { 
+							playerAutoDriving = true; // 啟動自動駕駛
+							playerPitWaypointIndex = 0; // 從 Pit Waypoint 索引 0 開始
+							inPit = false;
+							keys = {}; 
+							touch = {};
+							document.getElementById('lapHud').textContent = `PIT LANE - ENTERING`;
+							wantsToPit = false; // 清除 Pit 請求旗標
+						}
+					}
+
+
+						// -------------------------------------------------------------------
+						// 原來的玩家手動控制邏輯與物理模型 (只有在非 Pit Auto Drive 時才執行)
+						// -------------------------------------------------------------------
+						if (!playerAutoDriving) {
+							
+							// 獨立的摩擦力設定 (沿用舊版)0.999
+							const FORWARD_DAMPING_PLAYER = 0.9972;
+							
+							// 1. 設置轉向率和加速度
+							const STEERING_RATE = 0.038 * player.spec.handling * 0.38;
+							const ACCEL_RATE = player.spec.acceleration * 0.0085 * SPEED_UNIT_SCALE;
+							const MAX_SPEED = 34;
+							
+							let acceleration = 0;
+							let steering = 0;
+							
+							const wantsForward = (keys.ArrowUp || touch.up);
+							if (wantsForward) acceleration = ACCEL_RATE;
+							// softer brake: damp speed toward 0; allow very gentle reverse
+							if (keys.ArrowDown || touch.down) { 
+								if ((player.forwardSpeed || 0) > 0.2) {
+									player.forwardSpeed *= 0.92;
+									acceleration = 0;
+								} else {
+									acceleration = -0.18;
+								}
+							}
+							if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
+							if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
+							
+							const boostingActive = isBoosting && wantsForward && boostMeter > 0 && boostCooldown <= 0;
+							const maxSpeedNow = boostingActive ? (MAX_SPEED * BOOST_SPEED_MULTIPLIER) : MAX_SPEED;
+							if (boostingActive) {
+								acceleration *= 1.25;
+								boostMeter = Math.max(0, boostMeter - BOOST_DRAIN_RATE);
+								if (Math.random() < 0.7) emitBoostForCar(player, true);
+								if (boostMeter <= 0) boostCooldown = 60;
+							} else {
+								if (boostCooldown <= 0 && boostMeter < 1.0) {
+									boostMeter = Math.min(1.0, boostMeter + BOOST_RECHARGE_RATE);
+								}
+							}
+							
+							// --- 玩家【高級飄移物理模型】---
+							steering = Math.max(-0.4, Math.min(steering, 0.4));
+							
+							player.forwardSpeed = (player.forwardSpeed || player.speed || 0) + acceleration;
+							// prevent snapping into fast reverse
+							const MAX_REVERSE_SPEED = 3.0;
+							player.forwardSpeed = Math.max(-MAX_REVERSE_SPEED, Math.min(player.forwardSpeed, maxSpeedNow));
+							
+							// 高速時降低轉向靈敏度，避免「瞬間轉太多」
+							const speedForSteer = Math.abs(player.forwardSpeed);
+							const steerDamp = 1 / (1 + speedForSteer * 0.06);
+							player.angle += steering * steerDamp * player.forwardSpeed / 8;
+							
+							// 飄移物理
+							const sideFrictionFactor = 0.99;
+							const sideSpeedGeneration = 1.2;
+							
+							player.sideSpeed = player.sideSpeed || 0;
+							if (Math.abs(steering) > 0.01) {
+								player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration;
+							}
+							// 限制側滑量，避免轉向時「甩得太誇張」
+							const maxSideSlip = Math.abs(player.forwardSpeed) * 0.7;
+							player.sideSpeed = Math.max(-maxSideSlip, Math.min(player.sideSpeed, maxSideSlip));
+							
+							player.sideSpeed *= sideFrictionFactor;
+							player.forwardSpeed *= FORWARD_DAMPING_PLAYER;
+							
+							const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
+							const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
+							const actualAngle = player.angle + driftAngle;
+							
+							player.x += Math.cos(actualAngle) * totalSpeed * MOVE_SCALE;
+							player.y += Math.sin(actualAngle) * totalSpeed * MOVE_SCALE;
+							
+							player.speed = totalSpeed;
+							player.driftAngle = driftAngle;
+							
+							// --- 胎痕/塵土生成 (保持不變) ---
+							const TIRE_MARK_THRESHOLD = 8.0;
+							const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.55;
+							const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
+							
+							const rearX = player.x + Math.cos(player.angle + Math.PI) * (CARHEIGHT / 2);
+							const rearY = player.y + Math.sin(player.angle + Math.PI) * (CARHEIGHT / 2);
+							const perpX = Math.cos(player.angle + Math.PI / 2);
+							const perpY = Math.sin(player.angle + Math.PI / 2);
+							const lateralOffset = CARWIDTH / 2 * 0.7;
+							
+							const currentX_L = rearX + perpX * lateralOffset;
+							const currentY_L = rearY + perpY * lateralOffset;
+							const currentX_R = rearX - perpX * lateralOffset;
+							const currentY_R = rearY - perpY * lateralOffset;
+							
+							const lastX_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.x : currentX_L;
+							const lastY_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.y : currentY_L;
+							const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R;
+							const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
+							
+							if (isDrifting) {
+								const TIRE_MARK_LIFE = 60;
+								tireMarks.push({ x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L, life: TIRE_MARK_LIFE });
+								tireMarks.push({ x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R, life: TIRE_MARK_LIFE });
+								emitDustForCar(player, true, maxSpeedNow);
+							}
+							
+							player.lastTireMarkPosL = { x: currentX_L, y: currentY_L };
+							player.lastTireMarkPosR = { x: currentX_R, y: currentY_R };
+							
+							if (player.speed > 0.6) {
+								emitMoveDustForCar(player);
+							}
+
 							if (!isBoosting) {
 								// keep current state
 							}
@@ -1467,51 +1957,100 @@ document.addEventListener('DOMContentLoaded', () => {
 							// Handle boost cooldown
 							if (boostCooldown > 0) boostCooldown--;
 
-						drawDashboard(player.speed);
+							drawDashboard(player.speed);
+							drawTireMonitor(player, tireMonitorCtx);
+							
+							// 完賽檢測 (保持不變)
+							const startLineY = TRACKS[currentTrack].start.y * SCALE;
+
+							if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
+								lap++;
+
+								if (lap > totalLaps) {
+									raceFinished = true;
+									gameState = 'finished';
+
+									const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
+									const pos = sorted.findIndex(c => c === player) + 1;
+									document.getElementById('finalPos').textContent =
+									`FINAL POS #${pos}/${allCars.length + 1}`;
+									document.getElementById('finishScreen').style.display = 'flex';
+								}
+							}
+
+							player.prevY = player.y;
+
+							
+							// 更新HUD (保持不變)
+							const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
+							const pos = sorted.findIndex(c => c === player) + 1;
+							document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+							document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
+							document.getElementById('speedHud').textContent = `${Math.round(Math.abs(player.speed) * 15)} kmh`;
+
+						} // 結束 if (!playerAutoDriving)
 						
-						
-						// 完賽檢測
-						const startLineY = TRACKS[currentTrack].start.y * SCALE;
+						// -------------------------------------------------------------------
+						// 3. 玩家 Pit 站換胎計時與退出邏輯 
+						// -------------------------------------------------------------------
 
-						if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
-							lap++;
+						if (inPit) {
+							// 玩家在 Pit 站 (此時 playerAutoDriving 應為 false)
+							
+							// 簡易換胎流程 (假設玩家已停下)
+							if (player.speed < 0.1) { 
+								player.speed = 0;
+								player.forwardSpeed = 0;
+								player.sideSpeed = 0;
+								
+								// 顯示 Pit 站狀態
+								document.getElementById('lapHud').textContent = `PIT STOP: ${Math.ceil(PIT_STOP_DURATION - pitTimer)}s`;
 
-							if (lap > totalLaps) {
-								raceFinished = true;
-								gameState = 'finished';
-
-								const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-								const pos = sorted.findIndex(c => c === player) + 1;
-								document.getElementById('finalPos').textContent =
-								`FINAL POS #${pos}/${allCars.length + 1}`;
-								document.getElementById('finishScreen').style.display = 'flex';
+								pitTimer += deltaTime;
+								
+								if (pitTimer >= PIT_STOP_DURATION) {
+									// 換胎完成
+									tireHealth = [100, 100, 100, 100];
+									inPit = false;
+									pitTimer = 0;
+									
+									// 【啟動 Pit 站出口自動駕駛】
+									playerAutoDriving = true;
+									// 設定目標為停車點的下一個 Waypoint (例如索引 3)
+									// 需確保 trackData.pitWaypoints 存在
+									if (trackData.pitWaypoints && trackData.pitWaypoints.length >= 3) {
+										const PIT_PARKING_INDEX = trackData.pitWaypoints.length - 3; 
+										playerPitWaypointIndex = PIT_PARKING_INDEX + 1; 
+									} else {
+										 // 安全回退：直接回到手動控制
+										 playerAutoDriving = false;
+										 document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+									}
+								}
 							}
 						}
 
-						player.prevY = player.y;
-
+						// -------------------------------------------------------------------
+						// 4. 玩家輪胎損壞強制停止 (Game Over) (保持在最後)
+						// -------------------------------------------------------------------
+						if (playerAvgHealth <= CRITICAL_HEALTH && gameState === 'racing') {
+							// 輪胎已損壞，強制停止
+							player.speed = 0;
+							player.forwardSpeed = 0;
+							player.sideSpeed = 0;
+							
+							if (!raceFinished) {
+								// 顯示 Game Over 訊息
+								document.getElementById('gameOverText').textContent = '輪胎嚴重損壞！比賽中止。請下次及時進 Pit 站更換輪胎。';
+								document.getElementById('gameOverScreen').style.display = 'flex';
+								gameState = 'finished'; // 結束遊戲
+							}
+						}
 						
-						// 更新HUD
-						const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-						const pos = sorted.findIndex(c => c === player) + 1;
-						document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
-						document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
-						document.getElementById('speedHud').textContent = `${Math.round(Math.abs(player.speed) * 15)} kmh`;
 					}
 
 			if (gameState !== 'title') {
-				try {
-					drawMinimap(); 
-				} catch (error) {
-					console.error('Error in game loop (minimap):', error);
-				}
-
-				try {
-					requestAnimationFrame(loop);
-				} catch (error) {
-					console.error('Error in game loop (animation frame):', error);
-				}
-			} else {
+				drawMinimap(); 
 				requestAnimationFrame(loop);
 			}
 		}
@@ -1592,6 +2131,11 @@ document.addEventListener('DOMContentLoaded', () => {
 					} else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
 						e.preventDefault();
 						keys[e.key] = true;
+					} else if (e.key === 'p' || e.key === 'P') {
+						// 玩家按下 P 鍵請求進入 Pit 站
+						if (gameState === 'racing' && !playerAutoDriving && !inPit) {
+							wantsToPit = true;
+						}
 					}
 				});
 				window.addEventListener('keyup', e => {
@@ -1608,5 +2152,4 @@ document.addEventListener('DOMContentLoaded', () => {
 				}
 			});
 
-			console.log('[game.js] 遊戲引擎加載完成');
 });
