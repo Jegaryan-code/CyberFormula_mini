@@ -408,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			car.sideSpeed *= frictionFactor; 
 			
 			// 6. 空氣阻力/減速 
-			car.forwardSpeed *= 0.99;
+			car.forwardSpeed *= 0.992;
 			
 			// 7. 將 forwardSpeed 和 sideSpeed 轉換為實際的 X/Y 移動
 			const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
@@ -932,9 +932,9 @@ document.addEventListener('DOMContentLoaded', () => {
 				const speed = 3.2 + Math.random() * 2.2;
 				const life = 7 + Math.random() * 8;
 				const backOffset = 50 + Math.random() * 8;
-				const sideOffset = side * (CARWIDTH * 0.20);
-				const length = 34 + Math.random() * 14;
-				const width = 6 + Math.random() * 3;
+				const sideOffset = side * (CARWIDTH * 0.3);
+				const length = 2 + Math.random() * 3;
+				const width = 8 + Math.random() * 3;
 				boostParticles.push({
 					type: 'flame',
 					x: car.x - Math.cos(car.angle) * backOffset + Math.cos(car.angle + Math.PI / 2) * sideOffset,
@@ -1073,12 +1073,12 @@ document.addEventListener('DOMContentLoaded', () => {
 			
 			for (let i = 0; i < 4; i++) {
 				dustParticles.push({
-					x: rearX + (Math.random() - 0.5) * 15,
-					y: rearY + (Math.random() - 0.5) * 15,
+					x: rearX + (Math.random() - 0.5) * 20,
+					y: rearY + (Math.random() - 0.5) * 20,
 					vx: -Math.cos(car.angle) * 1 + Math.cos(car.angle + Math.PI / 2) * sideDirection * (1 + Math.random() * 2),
 					vy: -Math.sin(car.angle) * 1 + Math.sin(car.angle + Math.PI / 2) * sideDirection * (1 + Math.random() * 2),
-					life: 30, 
-					maxLife: 30
+					life: 40, 
+					maxLife: 60
 				});
 			}
 		}
@@ -1212,9 +1212,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			drawTireMonitor(ctx, W, H); // [新增] 呼叫輪胎監控器
 			
 		}
-
-
-		
 
 		function loop() {
 			if (gameState === 'paused' || raceFinished) {
@@ -1389,7 +1386,7 @@ document.addEventListener('DOMContentLoaded', () => {
 					if (gameState === 'racing' && !raceFinished) {
 						
 						// AI 獨立摩擦力設定 (已調整)0.985
-						const FORWARD_DAMPING_AI = 0.984; 
+						const FORWARD_DAMPING_AI = 0.988; 
 						const deltaTime = 1/60; // 假設 60 FPS 的 deltaTime
 						const trackData = TRACKS[currentTrack]; // 確保 trackData 存在
 
@@ -1593,7 +1590,7 @@ document.addEventListener('DOMContentLoaded', () => {
 								const speedRatio = currentSpeed / carMaxSpeed;
 								
 								// Set the speed ratio threshold for flame effect (70% of max speed)
-								const speedRatioForFlame = 0.14;
+								const speedRatioForFlame = 0.18;
 
 								// Only show flame when speed is at or above 70% of max speed
 								if (speedRatio >= speedRatioForFlame) {
@@ -1605,7 +1602,7 @@ document.addEventListener('DOMContentLoaded', () => {
 							}
 						}); // 結束 allCars.forEach
 						
-						// Player speed flame effect (orange) when near max speed (within 2 km/h) and not boosting
+						// Player speed flame effect (orange) when near max speed and not boosting
 						const wantsForwardVfx = (keys.ArrowUp || touch.up);
 						const playerBoostingActive = isBoosting && wantsForwardVfx && boostMeter > 0 && boostCooldown <= 0;
 						const playerSteeringActive = (keys.ArrowLeft || touch.left || keys.ArrowRight || touch.right);
@@ -1613,7 +1610,7 @@ document.addEventListener('DOMContentLoaded', () => {
 						if (!playerBoostingActive && !playerSteeringActive && wantsForwardVfx) {
 						    // Calculate player's max speed based on spec
 						    const playerMaxSpeed = getCarMaxSpeed(player);
-						    const speedFlameThreshold = playerMaxSpeed - 6.2; // Flame starts at max speed - 2 km/h
+						    const speedFlameThreshold = playerMaxSpeed - 4.1; // Flame starts at max speed - 2 km/h
 						    
 						    if (player.speed > speedFlameThreshold) {
 						        // Calculate flame intensity based on how close to max speed
@@ -1866,12 +1863,12 @@ document.addEventListener('DOMContentLoaded', () => {
 						if (!playerAutoDriving) {
 							
 							// 獨立的摩擦力設定 (沿用舊版)0.999
-							const FORWARD_DAMPING_PLAYER = 0.9972;
+							const FORWARD_DAMPING_PLAYER = 0.998;
 							
 							// 1. 設置轉向率和加速度
 							const STEERING_RATE = 0.038 * player.spec.handling * 0.38;
-							const ACCEL_RATE = player.spec.acceleration * 0.0085 * SPEED_UNIT_SCALE;
-							const MAX_SPEED = 34;
+							const ACCEL_RATE = player.spec.acceleration * 0.0097 * SPEED_UNIT_SCALE;
+							const MAX_SPEED = 32;
 							
 							let acceleration = 0;
 							let steering = 0;
