@@ -1327,46 +1327,6 @@ document.addEventListener('DOMContentLoaded', () => {
 						ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
 					}
 					ctx.restore();
-					if (allCars && allCars.length) {
-						let c0 = allCars[0];
-						let v0 = Math.abs(c0.speed || 0);
-						for (let i = 1; i < allCars.length; i++) {
-							const vi = Math.abs(allCars[i].speed || 0);
-							if (vi > v0) {
-								c0 = allCars[i];
-								v0 = vi;
-							}
-						}
-						const a0 = Math.abs(c0.forwardSpeed || 0);
-						const s0 = Math.abs(c0.sideSpeed || 0);
-						const d0 = Math.abs(c0.driftAngle || 0);
-						const tr0 = (c0 && typeof c0.lastTurnRate === 'number') ? c0.lastTurnRate : 0;
-						const m0 = (c0 && typeof c0.maxSpeedLimit === 'number') ? c0.maxSpeedLimit : 0;
-						const AI_THR_FIXED = 395 / 15;
-						const t0 = (m0 <= AI_THR_FIXED) ? (m0 * 0.95) : AI_THR_FIXED;
-						const st0 = (c0 && typeof c0.speedFlameTimer === 'number') ? c0.speedFlameTimer : 0;
-						const boosting0 = !!c0.isBoosting;
-						const flameOn0 = (!boosting0) && (st0 > 0);
-						const gate0 = (c0.forwardSpeed || 0) > 0.5 && (c0.lastAIAcceleration || 0) >= 0 && Math.abs(tr0) < 0.01;
-						const bp0 = (boostParticles && boostParticles.length) ? boostParticles.length : 0;
-						const playerMaxDbg = 34;
-						const playerThrDbg = playerMaxDbg * 0.8;
-						const wantsForwardDbg = (keys.ArrowUp || touch.up);
-						const playerBoostingDbg = isBoosting && wantsForwardDbg && boostMeter > 0 && boostCooldown <= 0;
-						const playerSpeedDbg = Math.abs(player.speed || 0);
-						const playerSteeringDbg = (keys.ArrowLeft || touch.left || keys.ArrowRight || touch.right);
-						const playerFlameDbg = (!playerBoostingDbg) && wantsForwardDbg && (!playerSteeringDbg) && (playerSpeedDbg > playerThrDbg);
-						ctx.save();
-						ctx.fillStyle = 'rgba(0,0,0,0.55)';
-						ctx.fillRect(10, 78, 520, 150);
-						ctx.fillStyle = '#fff';
-						ctx.font = '14px Arial';
-						ctx.fillText(`AI(fast) f:${a0.toFixed(1)} s:${s0.toFixed(2)} d:${d0.toFixed(2)} max:${m0.toFixed(1)} (${Math.round(m0 * 15)}kmh)`, 18, 102);
-						ctx.fillText(`AI(fast) v:${v0.toFixed(1)} (${Math.round(v0 * 15)}kmh) thr:${t0.toFixed(1)} (${Math.round(t0 * 15)}kmh) tr:${tr0.toFixed(3)} gate:${gate0} tmr:${st0} boosting:${boosting0} flame:${flameOn0}`, 18, 124);
-						ctx.fillText(`P v:${playerSpeedDbg.toFixed(1)} (${Math.round(playerSpeedDbg * 15)}kmh) thr:${playerThrDbg.toFixed(1)} (${Math.round(playerThrDbg * 15)}kmh) boosting:${playerBoostingDbg} flame:${playerFlameDbg}`, 18, 146);
-						ctx.fillText(`boostParticles:${bp0}`, 18, 168);
-						ctx.restore();
-					}
 					
 					// 倒數計時
 					// In the game loop, update the countdown logic
