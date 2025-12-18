@@ -1867,8 +1867,8 @@ document.addEventListener('DOMContentLoaded', () => {
 							
 							// 1. 設置轉向率和加速度
 							const STEERING_RATE = 0.038 * player.spec.handling * 0.38;
-							const ACCEL_RATE = player.spec.acceleration * 0.0097 * SPEED_UNIT_SCALE;
-							const MAX_SPEED = 32;
+							const ACCEL_RATE = player.spec.acceleration * 0.0098 * SPEED_UNIT_SCALE;
+							const MAX_SPEED = 34;
 							
 							let acceleration = 0;
 							let steering = 0;
