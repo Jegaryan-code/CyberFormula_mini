@@ -5,7 +5,7 @@
 // Main game initialization
 document.addEventListener('DOMContentLoaded', () => {
         const SCALE = 5.0; // Scale factor for game coordinates to pixels
-        const WORLD_SPEED_SCALE = 0.35;
+        const WORLD_SPEED_SCALE = 0.7;
         const SPEED_UNIT_SCALE = 34 / 18;
         const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
         const CARWIDTH = 90;
@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		let pitTimer = 0; // 記錄 Pit 站換胎時間 (秒)
 		const PIT_STOP_DURATION = 5.0; // Pit 站換胎時間 (秒)
 		const MUST_PIT_THRESHOLD = 30; // 輪胎血量低於此值 AI 必須進 Pit
-		const PIT_LANE_SPEED_LIMIT = 12.0; // Pit Lane 的速度限制
+		const PIT_LANE_SPEED_LIMIT = 20.0; // Pit Lane 的速度限制
 		const PIT_PARKING_DIST_SCALED = 15; // 停車距離 (未縮放，我們會在邏輯中乘以 SCALE)
 		const CRITICAL_HEALTH = 5; // 輪胎血量低於此值玩家將強制停止 (Game Over)
 
@@ -1791,7 +1791,7 @@ document.addEventListener('DOMContentLoaded', () => {
 							player.angle += angleDiff * 0.1; // 平滑轉向
 
 							// Pit Lane 限速 (【速度已提升】)
-							player.forwardSpeed = Math.min(player.forwardSpeed + 0.1, PIT_LANE_SPEED_LIMIT); 
+							player.forwardSpeed = Math.min(player.forwardSpeed + 0.5, PIT_LANE_SPEED_LIMIT); 
 							player.sideSpeed = 0; 
 
 							// 移動更新 (取代手動控制)
