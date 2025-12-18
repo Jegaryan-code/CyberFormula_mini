@@ -1315,25 +1315,48 @@ document.addEventListener('DOMContentLoaded', () => {
 						ctx.stroke();
 
 						// 3. 繪製 Pit Stop 停車位標記 (橘色)
+						// --- 3. 繪製維修區車隊格子 (6 個橫向長方形，偏右側) ---
 						if (RENDER_PARKING_INDEX >= 0) {
 							const wp = trackData.pitWaypoints[RENDER_PARKING_INDEX];
-							const x = wp.x * SCALE - player.x + W / 2;
-							const y = wp.y * SCALE - player.y + H / 2;
+							const base_x = wp.x * SCALE - player.x + W / 2;
+							const base_y = wp.y * SCALE - player.y + H / 2;
 
-							ctx.fillStyle = 'rgba(255, 165, 0, 0.9)'; // 橘色停車格
-							const parkingSize = CARWIDTH * SCALE * 0.7; // 稍大一點的停車位
-							ctx.fillRect(x - parkingSize / 2, y - parkingSize / 2, parkingSize, parkingSize); 
-							
-							// 白色邊框
-							ctx.strokeStyle = 'white';
-							ctx.lineWidth = 3;
-							ctx.strokeRect(x - parkingSize / 2, y - parkingSize / 2, parkingSize, parkingSize);
+							const boxWidth = CARWIDTH * SCALE * 1.1;  // 闊度加倍，變成長方形
+							const boxHeight = CARHEIGHT * SCALE * 0.5; // 格子高度
+							const xOffset = boxWidth / 2 + 20;        // 偏右移動量，留出左側的 Pit Road (維修通道)
+							const verticalGap = boxHeight * 1.2;      // 格子之間的間距
 
-							// 文字標記
-							ctx.font = '30px Arial';
-							ctx.fillStyle = 'white';
-							ctx.textAlign = 'center';
-							ctx.fillText('PIT STOP', x, y + 10);
+							for (let i = 0; i < 6; i++) {
+								// 每個格子的 Y 座標會往下排開
+								const currentY = base_y + (i * verticalGap);
+								const currentX = base_x + xOffset;
+
+								// 1. 繪製格子底色 (深灰色 #555555)
+								ctx.fillStyle = '#555555';
+								ctx.fillRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
+
+								// 2. 繪製白色/黃色邊框 (更像賽道標線)
+								ctx.strokeStyle = (i === 0) ? '#00ffff' : 'white'; // 玩家的格子 (Index 0) 用青色醒目一點
+								ctx.lineWidth = 4;
+								ctx.strokeRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
+
+								// 3. 繪製格子內的裝飾線 (斜紋或車隊編號)
+								ctx.font = '20px Rajdhani';
+								ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+								ctx.textAlign = 'right';
+								ctx.fillText(`TEAM ${10 + i}`, currentX + boxWidth / 2 - 10, currentY + boxHeight / 2 - 10);
+
+								// 4. 如果是玩家的第一個格子，加一個特殊的 "STOP" 提示
+								if (i === 0) {
+									ctx.fillStyle = 'rgba(255, 255, 0, 0.3)'; // 淡淡的黃色閃爍感
+									ctx.fillRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
+									
+									ctx.fillStyle = 'yellow';
+									ctx.font = 'bold 24px Arial';
+									ctx.textAlign = 'center';
+									ctx.fillText('YOUR PIT', currentX, currentY + 8);
+								}
+							}
 						}
 						
 						ctx.restore();
@@ -1802,64 +1825,52 @@ document.addEventListener('DOMContentLoaded', () => {
 						}
 					}
 					// 狀態 3: 賽道上 (檢查是否應啟動 Auto Drive)
+					// --- 在 loop 函式內替換這部分 ---
 					else if (trackData.pitEntry && !playerAutoDriving) {
 						const unscaledPlayerX = player.x / SCALE;
 						const unscaledPlayerY = player.y / SCALE;
-						
-						// 從 DOM 取得 Pit HUD 元素
 						const pitHudPrompt = document.getElementById('pitHudPrompt'); 
 						
-						// Pit 入口檢測距離 (確保此處使用了正確的縮放)
-						const PIT_ENTRY_TRIGGER_DIST = 100 * SCALE; 
+						// 檢測距離
+						const PIT_ENTRY_TRIGGER_DIST = 120; // 使用世界座標距離
 
 						const dx = unscaledPlayerX - trackData.pitEntry.x;
 						const dy = unscaledPlayerY - trackData.pitEntry.y;
 						const distToEntry = Math.hypot(dx, dy);
 
-						
-						// ==========================================================
-						// 判斷 1: 玩家靠近 Pit 入口【且】滿足 Pit 站條件 (進入 Pit)
-						// ==========================================================
+						// 情況 A: 到達入口且有請求 -> 啟動自動駕駛
 						if (distToEntry < PIT_ENTRY_TRIGGER_DIST && (wantsToPit || playerAvgHealth < 20)) { 
-							
-							// --- 啟動 Pit Lane 自動駕駛 ---
 							playerAutoDriving = true; 
 							playerPitWaypointIndex = 0; 
 							inPit = false;
 							keys = {}; 
 							touch = {};
+							wantsToPit = false; // 進入後清除請求
+							if (pitHudPrompt) pitHudPrompt.style.display = 'none';
 							document.getElementById('lapHud').textContent = `PIT LANE - ENTERING`;
-							wantsToPit = false; // 清除 Pit 請求旗標
-
-							// --- HUD 控制 ---
-							if (pitHudPrompt) pitHudPrompt.style.display = 'none'; // 進入 Pit 後隱藏提示
-
 						} 
-						// ==========================================================
-						// 判斷 2: 玩家靠近 Pit 入口【但】不滿足 Pit 站條件 (顯示提示)
-						// ==========================================================
-						else if (distToEntry < PIT_ENTRY_TRIGGER_DIST) {
-							
-							// --- HUD 控制 ---
-							if (pitHudPrompt) {
-								// 顯示提示文字 (PC 用戶 P，手機用戶點擊按鈕)
-								pitHudPrompt.textContent = `PIT (P)`; 
-								pitHudPrompt.style.display = 'block'; 
-							}
-						} 
-						// ==========================================================
-						// 判斷 3: 玩家離入口太遠 (隱藏提示)
-						// ==========================================================
+						// 情況 B: 已經按下按鈕，但車子還沒開到入口 (顯示藍色預約字樣)
 						else if (wantsToPit) {
-								if (pitHudPrompt) {
-									pitHudPrompt.style.display = 'block';
-									pitHudPrompt.textContent = "PIT REQUESTED";
-									pitHudPrompt.style.backgroundColor = "rgba(0, 128, 255, 0.7)"; // 預約時顯示藍色
-								}
+							if (pitHudPrompt) {
+								pitHudPrompt.style.display = 'block';
+								pitHudPrompt.textContent = "PIT REQUESTED";
+								pitHudPrompt.style.backgroundColor = "rgba(0, 120, 255, 0.8)"; // 藍色背景
+								pitHudPrompt.style.borderColor = "#00ffff"; // 青色邊框
 							}
-							else {
-								if (pitHudPrompt) pitHudPrompt.style.display = 'none'; 
+						}
+						// 情況 C: 靠近入口但還沒按按鈕 (顯示黃色提示字樣)
+						else if (distToEntry < PIT_ENTRY_TRIGGER_DIST) {
+							if (pitHudPrompt) {
+								pitHudPrompt.style.display = 'block';
+								pitHudPrompt.textContent = "READY TO PIT (P)";
+								pitHudPrompt.style.backgroundColor = "rgba(255, 165, 0, 0.8)"; // 橘色背景
+								pitHudPrompt.style.borderColor = "#ffffff";
 							}
+						}
+						// 情況 D: 其他情況 (隱藏提示)
+						else {
+							if (pitHudPrompt) pitHudPrompt.style.display = 'none'; 
+						}
 					}
 
 
@@ -2155,20 +2166,25 @@ document.addEventListener('DOMContentLoaded', () => {
 							isBoosting = false;
 						});
 					}
+					//
+
 					
-					const pitBtn = document.getElementById('pitBtn');
-					if (pitBtn) {
-						pitBtn.addEventListener('touchstart', e => {
-							e.preventDefault();
-							// 只有在競速中且非自動駕駛時，才能請求進 Pit
-							if (gameState === 'racing' && !playerAutoDriving) {
-								wantsToPit = true; 
-							}
-						});
-						
-						// Pit 按鈕不需要 touchend 邏輯，因為 wantsToPit 在 Pit 邏輯執行後會被重設為 false。
-					}
-					
+				}
+				
+				const pitBtn = document.getElementById('pitBtn');
+				if (pitBtn) {
+					// 定義一個統一的處理函式
+					const handlePitPress = (e) => {
+						e.preventDefault(); // 防止滾動或點擊穿透
+						if (gameState === 'racing' && !playerAutoDriving) {
+							wantsToPit = true;
+							
+						}
+					};
+
+					// 同時綁定觸控和點擊，確保在任何裝置都有效
+					pitBtn.addEventListener('touchstart', handlePitPress, { passive: false });
+					pitBtn.addEventListener('mousedown', handlePitPress); // 支援電腦滑鼠點擊測試
 				}
 				
 				window.addEventListener('keydown', e => {
