@@ -1850,10 +1850,16 @@ document.addEventListener('DOMContentLoaded', () => {
 						// ==========================================================
 						// 判斷 3: 玩家離入口太遠 (隱藏提示)
 						// ==========================================================
-						else {
-							// --- HUD 控制 ---
-							if (pitHudPrompt) pitHudPrompt.style.display = 'none'; 
-						}
+						else if (wantsToPit) {
+								if (pitHudPrompt) {
+									pitHudPrompt.style.display = 'block';
+									pitHudPrompt.textContent = "PIT REQUESTED";
+									pitHudPrompt.style.backgroundColor = "rgba(0, 128, 255, 0.7)"; // 預約時顯示藍色
+								}
+							}
+							else {
+								if (pitHudPrompt) pitHudPrompt.style.display = 'none'; 
+							}
 					}
 
 
