@@ -1766,7 +1766,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 						if (player.pitTimer >= PIT_STOP_DURATION) {
 							// 換胎完成 -> 準備 Exiting
-							player.tireHealth = [100, 100, 100, 100];
+							tireHealth = [100, 100, 100, 100];
 							inPit = false;
 							player.pitTimer = 0;
 							playerPitWaypointIndex = PIT_PARKING_INDEX + 1; // 從停車點的下一個 Waypoint (Index 3) 開始追蹤
