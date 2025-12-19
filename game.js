@@ -1315,46 +1315,51 @@ document.addEventListener('DOMContentLoaded', () => {
 						ctx.stroke();
 
 						// 3. 繪製 Pit Stop 停車位標記 (橘色)
-						// --- 3. 繪製維修區車隊格子 (6 個橫向長方形，偏右側) ---
-						if (RENDER_PARKING_INDEX >= 0) {
+						// --- 3. 繪製維修區車隊格子 (專業版：6 個偏右長方形) ---
+						if (typeof RENDER_PARKING_INDEX !== 'undefined' && RENDER_PARKING_INDEX >= 0) {
+							const trackData = TRACKS[currentTrack];
 							const wp = trackData.pitWaypoints[RENDER_PARKING_INDEX];
-							const base_x = wp.x * SCALE - player.x + W / 2;
-							const base_y = wp.y * SCALE - player.y + H / 2;
+							
+							// 轉換為螢幕座標
+							const bx = wp.x * SCALE - player.x + W / 2;
+							const by = wp.y * SCALE - player.y + H / 2;
 
-							const boxWidth = CARWIDTH * SCALE * 1.1;  // 闊度加倍，變成長方形
-							const boxHeight = CARHEIGHT * SCALE * 0.5; // 格子高度
-							const xOffset = boxWidth / 2 + 20;        // 偏右移動量，留出左側的 Pit Road (維修通道)
-							const verticalGap = boxHeight * 1.2;      // 格子之間的間距
+							const boxWidth = CARWIDTH * SCALE * 1.6;  // 橫向加長
+							const boxHeight = CARHEIGHT * SCALE * 0.8; 
+							const xOffset = boxWidth / 2 + 40;        // 將格子向右推 40 像素，讓左邊留出維修通道 (Pit Road)
+							const gap = boxHeight * 1.1;              // 格子之間的間距
 
 							for (let i = 0; i < 6; i++) {
-								// 每個格子的 Y 座標會往下排開
-								const currentY = base_y + (i * verticalGap);
-								const currentX = base_x + xOffset;
+								const currentY = by + (i * gap);
+								const currentX = bx + xOffset;
 
-								// 1. 繪製格子底色 (深灰色 #555555)
+								// A. 地面底色 (#555555 深灰色)
 								ctx.fillStyle = '#555555';
 								ctx.fillRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
 
-								// 2. 繪製白色/黃色邊框 (更像賽道標線)
-								ctx.strokeStyle = (i === 0) ? '#00ffff' : 'white'; // 玩家的格子 (Index 0) 用青色醒目一點
-								ctx.lineWidth = 4;
+								// B. 專業邊框
+								if (i === 0) {
+									ctx.strokeStyle = '#00ffff'; // 玩家格子用青色
+									ctx.lineWidth = 4;
+								} else {
+									ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; // 其他格子半透明白
+									ctx.lineWidth = 2;
+								}
 								ctx.strokeRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
 
-								// 3. 繪製格子內的裝飾線 (斜紋或車隊編號)
-								ctx.font = '20px Rajdhani';
-								ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-								ctx.textAlign = 'right';
-								ctx.fillText(`TEAM ${10 + i}`, currentX + boxWidth / 2 - 10, currentY + boxHeight / 2 - 10);
+								// C. 裝飾線：格子右側增加紅色警告線
+								ctx.fillStyle = (i === 0) ? '#ff0000' : '#777';
+								ctx.fillRect(currentX + boxWidth / 2 - 8, currentY - boxHeight / 2, 8, boxHeight);
 
-								// 4. 如果是玩家的第一個格子，加一個特殊的 "STOP" 提示
+								// D. 文字提示
+								ctx.font = 'bold 16px Rajdhani';
+								ctx.fillStyle = 'white';
+								ctx.textAlign = 'center';
 								if (i === 0) {
-									ctx.fillStyle = 'rgba(255, 255, 0, 0.3)'; // 淡淡的黃色閃爍感
-									ctx.fillRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
-									
-									ctx.fillStyle = 'yellow';
-									ctx.font = 'bold 24px Arial';
-									ctx.textAlign = 'center';
-									ctx.fillText('YOUR PIT', currentX, currentY + 8);
+									ctx.fillText('PLAYER STOP', currentX - 10, currentY + 6);
+								} else {
+									ctx.font = '12px Rajdhani';
+									ctx.fillText(`TEAM ${i + 1}`, currentX - 10, currentY + 5);
 								}
 							}
 						}
@@ -1708,12 +1713,66 @@ document.addEventListener('DOMContentLoaded', () => {
 					
 					
 					// 玩家車輛
+					// === 玩家車輛繪製區域 ===
 					ctx.save();
 					ctx.translate(W / 2, H / 2);
+					// 配合你原本的旋轉邏輯
 					ctx.rotate(player.angle + Math.PI / 2);
-					if (player.img && player.img.complete) {
-						ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+
+					// --- [新加入] Cyber Formula 推進器 (Boost Pods) 效果 ---
+					if (typeof isBoosting !== 'undefined' && isBoosting) {
+						const podW = 12;  // 推進器寬度
+						const podH = 35;  // 推進器長度
+						const carW = CARWIDTH;
+						const carH = CARHEIGHT;
+
+						// 1. 繪製兩側展開的推進器外殼
+						ctx.fillStyle = '#333'; // 深灰色機械感
+						// 左後方 Pod
+						ctx.fillRect(-carW / 2 - podW + 5, carH / 2 - 40, podW, podH);
+						// 右後方 Pod
+						ctx.fillRect(carW / 2 - 5, carH / 2 - 40, podW, podH);
+
+						// 2. 繪製噴射火光 (藍色離子流)
+						const flameHeight = 40 + Math.random() * 20; // 火光閃爍感
+						
+						// 創建漸層色 (從亮藍到透明)
+						const gradient = ctx.createLinearGradient(0, carH / 2, 0, carH / 2 + flameHeight);
+						gradient.addColorStop(0, '#00ffff'); // 青藍色
+						gradient.addColorStop(0.5, 'rgba(0, 150, 255, 0.8)');
+						gradient.addColorStop(1, 'transparent');
+
+						ctx.fillStyle = gradient;
+						
+						// 左噴火
+						ctx.beginPath();
+						ctx.moveTo(-carW / 2 - 2, carH / 2 - 5);
+						ctx.lineTo(-carW / 2 - 8, carH / 2 + flameHeight);
+						ctx.lineTo(-carW / 2 + 4, carH / 2 + flameHeight);
+						ctx.fill();
+
+						// 右噴火
+						ctx.beginPath();
+						ctx.moveTo(carW / 2 + 2, carH / 2 - 5);
+						ctx.lineTo(carW / 2 + 8, carH / 2 + flameHeight);
+						ctx.lineTo(carW / 2 - 4, carH / 2 + flameHeight);
+						ctx.fill();
+
+						// 3. 加入火光核心 (白光)
+						ctx.fillStyle = 'white';
+						ctx.fillRect(-carW / 2 - 3, carH / 2 - 5, 4, 10);
+						ctx.fillRect(carW / 2 - 1, carH / 2 - 5, 4, 10);
 					}
+
+					// --- 原有的車像繪製 ---
+					if (player.img && player.img.complete) {
+						// 這裡可以加一點點 Boost 時的車身震動感
+						let shakeX = isBoosting ? (Math.random() - 0.5) * 2 : 0;
+						let shakeY = isBoosting ? (Math.random() - 0.5) * 2 : 0;
+						
+						ctx.drawImage(player.img, -CARWIDTH / 2 + shakeX, -CARHEIGHT / 2 + shakeY, CARWIDTH, CARHEIGHT);
+					}
+
 					ctx.restore();
 				
 					// 倒數計時
@@ -2093,7 +2152,81 @@ document.addEventListener('DOMContentLoaded', () => {
 							}
 						}
 						
-					}
+						// 在 loop 函式最下方，繪製 HUD 的地方
+						// === Cyber Formula AI 對話框系統 ===
+						if (gameState === 'racing') {
+							const currentCarSpec = CARSPECS[selectedCar];
+							const rawName = currentCarSpec.image.split('/').pop().replace('.png', '').replace(/_/g, ' ');
+							const carNameLower = rawName.toLowerCase();
+							
+							let aiPrefix = "▶ AI: ";
+							if (carNameLower.includes("asurada")) aiPrefix = "▶ ASURADA: ";
+							else if (carNameLower.includes("ogre")) aiPrefix = "▶ OGRE: ";
+							else if (carNameLower.includes("al-zard")) aiPrefix = "▶ AL-ZARD: ";
+							else if (carNameLower.includes("ex-zard")) aiPrefix = "▶ EX-ZARD: ";
+							
+							let aiMsg = "";
+							if (inPit) aiMsg = "SYSTEM CHECK... ALL UNITS GO.";
+							else if (isBoosting) aiMsg = "BOOST ON! PRESSURE CRITICAL!";
+							else if (tireHealth.some(h => h < 30)) aiMsg = "CAUTION: TIRE GRIP IS DOWN.";
+							else if (wantsToPit) aiMsg = "PIT-IN STRATEGY CONFIRMED.";
+
+							if (aiMsg !== "") {
+								ctx.save();
+								
+								// ---------------------------------------------------------
+								// 【位置調整區】 請修改以下數字來移動到你的紅圈位置
+								// ---------------------------------------------------------
+								const boxW = 520;           // 對話框寬度
+								const boxH = 80;            // 對話框高度
+
+								// 選項 A: 左上角 (避開 Lap 顯示) -> boxX = 30, boxY = 120
+								// 選項 B: 正左方中間 -> boxX = 30, boxY = H/2 - 40
+								// 選項 C: 左下方 (儀表板上方) -> boxX = 30, boxY = H - 280
+								
+								const boxX = 550;            // 修改這裡：越大越往右，越小越往左
+								const boxY = H-280;           // 修改這裡：越大越往下，越小越往上
+								// ---------------------------------------------------------
+
+								// 1. 繪製 Cyber 風格底盒
+								ctx.fillStyle = "rgba(0, 15, 30, 0.85)"; // 加深背景色更清晰
+								ctx.strokeStyle = "#00ffff";
+								ctx.lineWidth = 3;
+								
+								ctx.beginPath();
+								ctx.moveTo(boxX, boxY);
+								ctx.lineTo(boxX + boxW - 40, boxY);
+								ctx.lineTo(boxX + boxW, boxY + 40);
+								ctx.lineTo(boxX + boxW, boxY + boxH);
+								ctx.lineTo(boxX + 40, boxY + boxH);
+								ctx.lineTo(boxX, boxY + boxH - 40);
+								ctx.closePath();
+								ctx.fill();
+								ctx.stroke();
+
+								// 2. 裝飾性左邊條
+								ctx.fillStyle = "#00ffff";
+								ctx.fillRect(boxX + 15, boxY + 15, 8, boxH - 30);
+
+								// 3. 文字繪製
+								ctx.shadowBlur = 12;
+								ctx.shadowColor = "#00ffff";
+								
+								// AI 名字 (黃色)
+								ctx.font = "bold 28px 'Rajdhani'"; 
+								ctx.fillStyle = "#fbff00"; 
+								ctx.textAlign = "left";
+								ctx.fillText(aiPrefix, boxX + 40, boxY + 50);
+								
+								// 訊息內容 (白色)
+								ctx.font = "26px 'Rajdhani'";
+								ctx.fillStyle = "#ffffff";
+								const prefixWidth = ctx.measureText(aiPrefix).width;
+								ctx.fillText(aiMsg, boxX + 45 + prefixWidth, boxY + 50);
+
+								ctx.restore();
+							}
+						}					}
 
 			if (gameState !== 'title') {
 				drawMinimap(); 
