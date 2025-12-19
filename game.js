@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Boost system variables
         let isBoosting = false;
         let boostMeter = 1.0;
-        const BOOST_DRAIN_RATE = 0.003; // Reduced drain rate for longer boost
+        const BOOST_DRAIN_RATE = 0.0015; // Reduced drain rate for longer boost
         const BOOST_RECHARGE_RATE = 0.0015; // Slightly reduced recharge rate to balance
         const BOOST_SPEED_MULTIPLIER = 1.4; // 40% speed increase
         let boostCooldown = 0;
