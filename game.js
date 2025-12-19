@@ -5,7 +5,7 @@
 // Main game initialization
 document.addEventListener('DOMContentLoaded', () => {
         const SCALE = 5.0; // Scale factor for game coordinates to pixels
-        const WORLD_SPEED_SCALE = 0.7;
+        const WORLD_SPEED_SCALE = 0.5;
         const SPEED_UNIT_SCALE = 34 / 18;
         const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
         const CARWIDTH = 90;
@@ -1633,7 +1633,7 @@ document.addEventListener('DOMContentLoaded', () => {
 						if (!playerBoostingActive && !playerSteeringActive && wantsForwardVfx) {
 						    // Calculate player's max speed based on spec
 						    const playerMaxSpeed = getCarMaxSpeed(player);
-						    const speedFlameThreshold = playerMaxSpeed - 4.1; // Flame starts at max speed - 2 km/h
+						    const speedFlameThreshold = playerMaxSpeed - 6.9; // Flame starts at max speed - 2 km/h
 						    
 						    if (player.speed > speedFlameThreshold) {
 						        // Calculate flame intensity based on how close to max speed
@@ -1880,12 +1880,12 @@ document.addEventListener('DOMContentLoaded', () => {
 						if (!playerAutoDriving) {
 							
 							// 獨立的摩擦力設定 (沿用舊版)0.999
-							const FORWARD_DAMPING_PLAYER = 0.998;
+							const FORWARD_DAMPING_PLAYER = 0.9965;
 							
 							// 1. 設置轉向率和加速度
 							const STEERING_RATE = 0.038 * player.spec.handling * 0.38;
-							const ACCEL_RATE = player.spec.acceleration * 0.0098 * SPEED_UNIT_SCALE;
-							const MAX_SPEED = 34;
+							const ACCEL_RATE = player.spec.acceleration * 0.00975 * SPEED_UNIT_SCALE;
+							const MAX_SPEED = 32;
 							
 							let acceleration = 0;
 							let steering = 0;
