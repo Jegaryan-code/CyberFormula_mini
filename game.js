@@ -1729,7 +1729,7 @@ function drawSingleAIAvatar(ctx)  {
 
   const x = W / 2 - size / 2;
 
-  const y = H - 140;
+  const y = H - 440;
 
   ctx.save();
 
