@@ -15,6 +15,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const ctx = canvas.getContext('2d');
         const W = canvas.width, H = canvas.height;
 		
+		// ================================================
+		// AI AVATAR MAP (SINGLE)
+		// ================================================
+		const AI_AVATAR_MAP = [
+			{ key: "asurada", img: "ai/AI_ASURADA.png", name: "ASURADA" },
+			{ key: "garland", img: "ai/AI_Garland.png", name: "GARLAND" },
+			{ key: "orge",    img: "ai/AI_ORGE.png",   name: "ORGE" },
+			{ key: "al-zard", img: "ai/AI_ZARD.png",   name: "AL-ZARD" },
+			{ key: "ex-zard", img: "ai/AI_ZARD.png",   name: "EX-ZARD" }
+		];
+
+		let currentAIAvatarImg = new Image();
+		let currentAIName = "";
+
+		
+		
 		// 新增儀表板 Context
 		const dashCanvas = document.getElementById('dashboardCanvas');
 		const dashCtx = dashCanvas.getContext('2d');
@@ -54,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Boost system variables
         let isBoosting = false;
+		let modeNotifyTimer = 0;    // 通知顯示的倒數計時
+		let modeNotifyText = "";    // 通知文字
         let boostMeter = 1.0;
         const BOOST_DRAIN_RATE = 0.0015; // Reduced drain rate for longer boost
         const BOOST_RECHARGE_RATE = 0.0015; // Slightly reduced recharge rate to balance
@@ -374,7 +392,26 @@ document.addEventListener('DOMContentLoaded', () => {
 			ctx.restore();
 		}
 
-		
+		function updateAIAvatarByCarName(carName) {
+			if (!carName) return;
+
+			const nameLower = carName.toLowerCase();
+
+			for (const ai of AI_AVATAR_MAP) {
+				if (nameLower.includes(ai.key)) {
+					if (currentAIAvatarImg.src !== ai.img) {
+						currentAIAvatarImg = new Image();
+						currentAIAvatarImg.src = ai.img;
+						currentAIName = ai.name;
+					}
+					return;
+				}
+			}
+
+			// fallback
+			currentAIName = "AI";
+		}
+	
 		// 導入完整的飄移物理模型
 		function updateCarPhysics(car, acceleration, steeringAngle) {
 			// 1. 轉向角度限制
@@ -1145,73 +1182,105 @@ document.addEventListener('DOMContentLoaded', () => {
 		// ----------------------------------------------------
 		// 新增: 繪製輪胎監控器 (在 loop 函式之外)
 		// ----------------------------------------------------
-// game.js 中，替換 drawTireMonitor 函式定義
+	// game.js 中，替換 drawTireMonitor 函式定義
 
-	function drawTireMonitor(car, ctx) {
-		if (!ctx) return;
-		
-		// 確保 car.tireHealth 已經初始化 (防止錯誤)
-		if (!car.tireHealth) {
-			car.tireHealth = [100, 100, 100, 100];
+		function drawTireMonitor(car, ctx) {
+			if (!ctx) return;
+			
+			// 確保 car.tireHealth 已經初始化 (防止錯誤)
+			if (!car.tireHealth) {
+				car.tireHealth = [100, 100, 100, 100];
+			}
+			
+			// 【修正：移除 ctx.save() 和 ctx.restore()】
+			
+			ctx.clearRect(0, 0, 100, 100);
+			
+			// 繪製車身簡易圖形
+			ctx.fillStyle = '#444444';
+			ctx.fillRect(30, 10, 40, 80); // 車身 (佔用 40x80)
+			
+			// 繪製四個輪胎的健康度
+			const health = car.tireHealth;
+			
+			const getColor = (h) => {
+				if (h > 60) return '#00FF00'; // 綠色 (Green)
+				if (h > 30) return '#FFFF00'; // 黃色 (Yellow)
+				return '#FF0000'; // 紅色 (Red)
+			};
+			
+			// 輪胎位置: [FL, FR, RL, RR] (前左, 前右, 後左, 後右)
+			const positions = [
+				{x: 10, y: 15, h: 20, w: 10}, // FL (前左)
+				{x: 80, y: 15, h: 20, w: 10}, // FR (前右)
+				{x: 10, y: 65, h: 20, w: 10}, // RL (後左)
+				{x: 80, y: 65, h: 20, w: 10}  // RR (後右)
+			];
+			
+			// 繪製輪胎狀態方塊
+			positions.forEach((pos, index) => {
+				ctx.fillStyle = getColor(health[index]);
+				ctx.fillRect(pos.x, pos.y, pos.w, pos.h);
+				
+				// 繪製磨損程度 (用黑色覆蓋)
+				const wearHeight = pos.h * (100 - health[index]) / 100;
+				ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+				ctx.fillRect(pos.x, pos.y, pos.w, wearHeight);
+				
+				// 繪製邊框
+				ctx.strokeStyle = 'white';
+				ctx.strokeRect(pos.x, pos.y, pos.w, pos.h);
+			});
+
+			// 繪製平均值文字
+			const avg = health.reduce((a, b) => a + b, 0) / 4;
+			ctx.font = '10px Arial';
+			ctx.fillStyle = getColor(avg);
+			ctx.textAlign = 'center';
+			ctx.fillText(`AVG: ${Math.round(avg)}%`, 50, 98);
 		}
-		
-		// 【修正：移除 ctx.save() 和 ctx.restore()】
-		
-		ctx.clearRect(0, 0, 100, 100);
-		
-		// 繪製車身簡易圖形
-		ctx.fillStyle = '#444444';
-		ctx.fillRect(30, 10, 40, 80); // 車身 (佔用 40x80)
-		
-		// 繪製四個輪胎的健康度
-		const health = car.tireHealth;
-		
-		const getColor = (h) => {
-			if (h > 60) return '#00FF00'; // 綠色 (Green)
-			if (h > 30) return '#FFFF00'; // 黃色 (Yellow)
-			return '#FF0000'; // 紅色 (Red)
-		};
-		
-		// 輪胎位置: [FL, FR, RL, RR] (前左, 前右, 後左, 後右)
-		const positions = [
-			{x: 10, y: 15, h: 20, w: 10}, // FL (前左)
-			{x: 80, y: 15, h: 20, w: 10}, // FR (前右)
-			{x: 10, y: 65, h: 20, w: 10}, // RL (後左)
-			{x: 80, y: 65, h: 20, w: 10}  // RR (後右)
-		];
-		
-		// 繪製輪胎狀態方塊
-		positions.forEach((pos, index) => {
-			ctx.fillStyle = getColor(health[index]);
-			ctx.fillRect(pos.x, pos.y, pos.w, pos.h);
-			
-			// 繪製磨損程度 (用黑色覆蓋)
-			const wearHeight = pos.h * (100 - health[index]) / 100;
-			ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-			ctx.fillRect(pos.x, pos.y, pos.w, wearHeight);
-			
-			// 繪製邊框
-			ctx.strokeStyle = 'white';
-			ctx.strokeRect(pos.x, pos.y, pos.w, pos.h);
-		});
+			// ----------------------------------------------------
+			// 在 loop 函式中呼叫 drawTireMonitor
+			// ----------------------------------------------------
+			// 在 loop 函式中的 HUD 繪圖區塊 (通常是最後面)
 
-		// 繪製平均值文字
-		const avg = health.reduce((a, b) => a + b, 0) / 4;
-		ctx.font = '10px Arial';
-		ctx.fillStyle = getColor(avg);
-		ctx.textAlign = 'center';
-		ctx.fillText(`AVG: ${Math.round(avg)}%`, 50, 98);
-	}
-		// ----------------------------------------------------
-		// 在 loop 函式中呼叫 drawTireMonitor
-		// ----------------------------------------------------
-		// 在 loop 函式中的 HUD 繪圖區塊 (通常是最後面)
-
-		if (gameState !== 'title') {
-			drawMinimap(ctx, W, H);
-			drawTireMonitor(ctx, W, H); // [新增] 呼叫輪胎監控器
+			if (gameState !== 'title') {
+				drawMinimap(ctx, W, H);
+				drawTireMonitor(ctx, W, H); // [新增] 呼叫輪胎監控器
+				
+			}
 			
-		}
+			function drawSingleAIAvatar(ctx) {
+				if (!currentAIAvatarImg || !currentAIAvatarImg.complete) return;
+
+				const size = 100;
+
+				// 中間偏底（同你張圖一致）
+				const x = W / 2 - size / 2;
+				const y = H - 140;
+
+				ctx.save();
+
+				// 背景框
+				ctx.fillStyle = "rgba(0,0,0,0.6)";
+				ctx.fillRect(x - 12, y - 12, size + 24, size + 48);
+
+				ctx.strokeStyle = "rgba(0,255,255,0.5)";
+				ctx.lineWidth = 2;
+				ctx.strokeRect(x - 12, y - 12, size + 24, size + 48);
+
+				// Avatar
+				ctx.drawImage(currentAIAvatarImg, x, y, size, size);
+
+				// Name
+				ctx.font = "bold 14px Rajdhani";
+				ctx.fillStyle = "#00ffff";
+				ctx.textAlign = "center";
+				ctx.fillText(currentAIName, x + size / 2, y + size + 20);
+
+				ctx.restore();
+			}
+			
 
 		function loop() {
 			if (gameState === 'paused' || raceFinished) {
@@ -1367,6 +1436,41 @@ document.addEventListener('DOMContentLoaded', () => {
 						ctx.restore();
 					}
 					// -----------------------
+
+					// --- [Cyber Effect] 零的領域濾鏡 ---
+					if (isBoosting) {
+						let grd = ctx.createRadialGradient(W/2, H/2, W/4, W/2, H/2, W/1.2);
+						grd.addColorStop(0, 'transparent');
+						grd.addColorStop(1, 'rgba(0, 255, 255, 0.15)'); // 淡淡的青色光芒
+						
+						ctx.fillStyle = grd;
+						ctx.fillRect(0, 0, W, H);
+					}
+
+					// --- 偵測 Boost 切換瞬間 ---
+					if (isBoosting && !lastIsBoosting) {
+						// 當這一幀是 True，但上一幀是 False 時，觸發通知
+						modeNotifyText = "AERO MODE"; 
+						modeNotifyTimer = 60; // 顯示 60 幀 (約 1 秒)
+					}
+					lastIsBoosting = isBoosting; // 更新狀態供下一幀比對					
+					
+					if (modeNotifyTimer > 0) {
+						ctx.save();
+						ctx.font = "italic bold 80px 'Rajdhani'";
+						ctx.textAlign = "center";
+						// 產生閃爍與淡出效果
+						let alpha = modeNotifyTimer / 60;
+						ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+						ctx.shadowBlur = 20;
+						ctx.shadowColor = "#00ffff";
+						
+						// 繪製在螢幕中央偏上
+						ctx.fillText(modeNotifyText, W/2, H/2 - 100);
+						ctx.restore();
+						
+						modeNotifyTimer--;
+					}
 
 					// 繪製胎痕 (線段繪製)
 					ctx.save();
@@ -2152,81 +2256,128 @@ document.addEventListener('DOMContentLoaded', () => {
 							}
 						}
 						
-						// 在 loop 函式最下方，繪製 HUD 的地方
-						// === Cyber Formula AI 對話框系統 ===
-						if (gameState === 'racing') {
-							const currentCarSpec = CARSPECS[selectedCar];
-							const rawName = currentCarSpec.image.split('/').pop().replace('.png', '').replace(/_/g, ' ');
-							const carNameLower = rawName.toLowerCase();
+			// ================================================
+			// AI AVATAR HUD
+			// ================================================
+			if (gameState !== "title") {
+				drawSingleAIAvatar(ctx);
+			}
+
+			
+			// === Cyber Formula AI 對話框系統 (完整修正版) ===
+			if (gameState === 'racing') {
+				const currentCarSpec = CARSPECS[selectedCar];
+				const rawName = currentCarSpec.image.split('/').pop().replace('.png', '').replace(/_/g, ' ');
+				const carNameLower = rawName.toLowerCase();
+				updateAIAvatarByCarName(carNameLower);
+				
+				let aiPrefix = "▶ AI: ";
+				if (carNameLower.includes("asurada")) aiPrefix = "▶ ASURADA: ";
+				else if (carNameLower.includes("garland")) aiPrefix = "▶ GARLAND: ";
+				else if (carNameLower.includes("ogre")) aiPrefix = "▶ OGRE: ";
+				else if (carNameLower.includes("al-zard")) aiPrefix = "▶ AL-ZARD: ";
+				else if (carNameLower.includes("ex-zard")) aiPrefix = "▶ EX-ZARD: ";
+				
+				let aiMsg = "";
+				// 優先順序：進站 > 加速 > 損壞 > 請求進站
+				if (inPit) aiMsg = "SYSTEM CHECK... ALL UNITS GO.";
+				else if (isBoosting) aiMsg = "BOOST ON! PRESSURE CRITICAL!";
+				else if (tireHealth.some(h => h < 30)) aiMsg = "CAUTION: TIRE GRIP IS DOWN.";
+				else if (wantsToPit) aiMsg = "PIT-IN STRATEGY CONFIRMED.";
+
+				// 只要有訊息，或者正在 Boost，我們就顯示對話框
+				if (aiMsg !== "" || isBoosting) {
+					ctx.save(); // 【最外層 Save】
+
+					const boxW = 520;           
+					const boxH = 80;            
+					const boxX = 475;           
+					const boxY = H - 270;       
+
+					// 1. 繪製 Cyber 風格底盒 (帶斜角)
+					ctx.fillStyle = "rgba(0, 15, 30, 0.85)"; 
+					ctx.strokeStyle = isBoosting ? "#ff00ff" : "#00ffff"; // Boost 時邊框變紫色/粉色更帥
+					ctx.lineWidth = 3;
+					
+					ctx.beginPath();
+					ctx.moveTo(boxX, boxY);
+					ctx.lineTo(boxX + boxW - 40, boxY);
+					ctx.lineTo(boxX + boxW, boxY + 40);
+					ctx.lineTo(boxX + boxW, boxY + boxH);
+					ctx.lineTo(boxX + 40, boxY + boxH);
+					ctx.lineTo(boxX, boxY + boxH - 40);
+					ctx.closePath();
+					ctx.fill();
+					ctx.stroke();
+
+					// 2. 裝飾性左邊條 (會閃爍)
+					ctx.fillStyle = (Date.now() % 500 < 250) ? "#00ffff" : "rgba(0, 255, 255, 0.5)";
+					ctx.fillRect(boxX + 15, boxY + 15, 8, boxH - 30);
+
+					// 3. 【修正後的數據流】 放在對話框最右側，避免擋住文字
+					ctx.save();
+					ctx.font = "bold 10px monospace"; 
+					ctx.fillStyle = "rgba(0, 255, 255, 0.6)";
+					ctx.textAlign = "right";
+					for (let j = 0; j < 5; j++) {
+						const hex = "0x" + Math.random().toString(16).toUpperCase().substring(2, 6);
+						ctx.fillText(hex, boxX + boxW - 15, boxY + 25 + (j * 10));
+					}
+					
+					// 垂直掃描閃爍條
+					ctx.globalAlpha = Math.random();
+					ctx.fillStyle = "#00ffff";
+					ctx.fillRect(boxX + boxW - 5, boxY + 10, 2, boxH - 20);
+					ctx.restore();
+
+					// 4. 文字繪製 (帶發光)
+					ctx.shadowBlur = 12;
+					ctx.shadowColor = "#00ffff";
+					
+					// AI 名字
+					ctx.font = "bold 28px 'Rajdhani'"; 
+					ctx.fillStyle = "#fbff00"; 
+					ctx.textAlign = "left";
+					ctx.fillText(aiPrefix, boxX + 40, boxY + 50);
+					
+					// 訊息內容
+					ctx.font = "26px 'Rajdhani'";
+					ctx.fillStyle = "#ffffff";
+					const prefixWidth = ctx.measureText(aiPrefix).width;
+					
+					// 如果正在 Boost，且沒有其他緊急訊息，顯示 AERO MODE
+					let displayMsg = aiMsg;
+					if (isBoosting && aiMsg === "BOOST ON! PRESSURE CRITICAL!") {
+						displayMsg = "AERO MODE / BOOST ON";
+					}
+					
+					ctx.fillText(displayMsg, boxX + 45 + prefixWidth, boxY + 50);
+
+					ctx.restore(); // 【最外層 Restore】修正了原本缺失的部分
+				}
+			}					
+					}
+
+					// --- [Cyber Effect] 極速感徑向線條 ---
+					if (player.speed > 25 || isBoosting) {
+						ctx.save();
+						ctx.strokeStyle = isBoosting ? 'rgba(0, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.2)';
+						ctx.lineWidth = 1.5;
+						const lineCount = isBoosting ? 25 : 15;
+						
+						for (let i = 0; i < lineCount; i++) {
+							let angle = Math.random() * Math.PI * 2;
+							let dist = 300 + Math.random() * 200;
+							let len = 100 + Math.random() * 200;
 							
-							let aiPrefix = "▶ AI: ";
-							if (carNameLower.includes("asurada")) aiPrefix = "▶ ASURADA: ";
-							else if (carNameLower.includes("ogre")) aiPrefix = "▶ OGRE: ";
-							else if (carNameLower.includes("al-zard")) aiPrefix = "▶ AL-ZARD: ";
-							else if (carNameLower.includes("ex-zard")) aiPrefix = "▶ EX-ZARD: ";
-							
-							let aiMsg = "";
-							if (inPit) aiMsg = "SYSTEM CHECK... ALL UNITS GO.";
-							else if (isBoosting) aiMsg = "BOOST ON! PRESSURE CRITICAL!";
-							else if (tireHealth.some(h => h < 30)) aiMsg = "CAUTION: TIRE GRIP IS DOWN.";
-							else if (wantsToPit) aiMsg = "PIT-IN STRATEGY CONFIRMED.";
+							ctx.beginPath();
+							ctx.moveTo(W/2 + Math.cos(angle) * dist, H/2 + Math.sin(angle) * dist);
+							ctx.lineTo(W/2 + Math.cos(angle) * (dist + len), H/2 + Math.sin(angle) * (dist + len));
+							ctx.stroke();
+						}
+						ctx.restore();
+					}
 
-							if (aiMsg !== "") {
-								ctx.save();
-								
-								// ---------------------------------------------------------
-								// 【位置調整區】 請修改以下數字來移動到你的紅圈位置
-								// ---------------------------------------------------------
-								const boxW = 520;           // 對話框寬度
-								const boxH = 80;            // 對話框高度
-
-								// 選項 A: 左上角 (避開 Lap 顯示) -> boxX = 30, boxY = 120
-								// 選項 B: 正左方中間 -> boxX = 30, boxY = H/2 - 40
-								// 選項 C: 左下方 (儀表板上方) -> boxX = 30, boxY = H - 280
-								
-								const boxX = 475;            // 修改這裡：越大越往右，越小越往左
-								const boxY = H-270;           // 修改這裡：越大越往下，越小越往上
-								// ---------------------------------------------------------
-
-								// 1. 繪製 Cyber 風格底盒
-								ctx.fillStyle = "rgba(0, 15, 30, 0.85)"; // 加深背景色更清晰
-								ctx.strokeStyle = "#00ffff";
-								ctx.lineWidth = 3;
-								
-								ctx.beginPath();
-								ctx.moveTo(boxX, boxY);
-								ctx.lineTo(boxX + boxW - 40, boxY);
-								ctx.lineTo(boxX + boxW, boxY + 40);
-								ctx.lineTo(boxX + boxW, boxY + boxH);
-								ctx.lineTo(boxX + 40, boxY + boxH);
-								ctx.lineTo(boxX, boxY + boxH - 40);
-								ctx.closePath();
-								ctx.fill();
-								ctx.stroke();
-
-								// 2. 裝飾性左邊條
-								ctx.fillStyle = "#00ffff";
-								ctx.fillRect(boxX + 15, boxY + 15, 8, boxH - 30);
-
-								// 3. 文字繪製
-								ctx.shadowBlur = 12;
-								ctx.shadowColor = "#00ffff";
-								
-								// AI 名字 (黃色)
-								ctx.font = "bold 28px 'Rajdhani'"; 
-								ctx.fillStyle = "#fbff00"; 
-								ctx.textAlign = "left";
-								ctx.fillText(aiPrefix, boxX + 40, boxY + 50);
-								
-								// 訊息內容 (白色)
-								ctx.font = "26px 'Rajdhani'";
-								ctx.fillStyle = "#ffffff";
-								const prefixWidth = ctx.measureText(aiPrefix).width;
-								ctx.fillText(aiMsg, boxX + 45 + prefixWidth, boxY + 50);
-
-								ctx.restore();
-							}
-						}					}
 
 			if (gameState !== 'title') {
 				drawMinimap(); 
