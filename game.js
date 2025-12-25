@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () =>  {
 
   const WORLD_SPEED_SCALE = 0.5;
 
-  const SPEED_UNIT_SCALE = 34 / 18;
+  const SPEED_UNIT_SCALE = 36 / 17;
 
   const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
 
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () =>  {
 }
 ,
 {
-  key: "orge", img: "ai/AI_ORGE.png", name: "ORGE" 
+  key: "ogre", img: "ai/AI_OGRE.png", name: "OGRE" 
 }
 ,
 {
@@ -156,6 +156,12 @@ let countdownStartTime = 0;
 const tireMonitorCanvas = document.getElementById('tireMonitorCanvas');
 
 const tireMonitorCtx = tireMonitorCanvas ? tireMonitorCanvas.getContext('2d') : null;
+
+// 全域狀態
+let aeroModeActive = false;
+let circuitModeActive = false;
+let currentMode = 'Circuit'; // 初始為 Circuit Mode
+
 
 function createSandPattern()  {
 
@@ -955,6 +961,15 @@ car.lastAIAcceleration = acceleration;
 car.lastAISteering = steeringAngle;
 
 updateCarPhysics(car, acceleration, steeringAngle);
+updateAeroMode(car, false);
+switchCarImage(car, false);
+if (car.isAeroMode) emitAeroAirflow(car);
+
+console.log(`AI ${car.spec?.image?.split('/').pop() || 'Unknown'}: 
+  speed=${car.speed?.toFixed(1)}, 
+  maxSpeedLimit=${car.maxSpeedLimit?.toFixed(1)}, 
+  isAero=${car.isAeroMode}, 
+  steering=${car.lastAISteering?.toFixed(3)}`);
 
 }
 
@@ -1293,51 +1308,77 @@ if (typeof loop === 'function')  {
 
 }
 
-function emitSpeedFlameForCar(car, isPlayer)  {
-
-  const jets = [-1, 1];
-
-  for (let j = 0;
-  j < jets.length;
-  j++)  {
-
-    const side = jets[j];
-
-    const baseAngle = car.angle + Math.PI;
-
-    const angle = baseAngle + (Math.random() - 0.5) * 0.22;
-
-    const speed = 3.2 + Math.random() * 2.2;
-
-    const life = 7 + Math.random() * 8;
-
-    const backOffset = 50 + Math.random() * 8;
-
-    const sideOffset = side * (CARWIDTH * 0.3);
-
-    const length = 2 + Math.random() * 3;
-
-    const width = 8 + Math.random() * 3;
-
-    boostParticles.push( {
-
-      type: 'flame',
-      x: car.x - Math.cos(car.angle) * backOffset + Math.cos(car.angle + Math.PI / 2) * sideOffset,
-      y: car.y - Math.sin(car.angle) * backOffset + Math.sin(car.angle + Math.PI / 2) * sideOffset,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      angle: baseAngle,
-      length,
-      width,
-      life,
-      maxLife: life,
-      gravity: 0,
-      color: 'rgba(255, 140, 20, 0.75)'
-    }
-  );
-
+function logAICarSpecs() {
+  console.group('AI Car Speed Specs');
+  allCars.forEach((car, i) => {
+    const spec = car.spec;
+    console.log(`${i}: ${spec.image.split('/').pop()}`, {
+      acceleration: spec.acceleration,
+      maxSpeedBase: getCarMaxSpeed(car),
+      speedFactor: car.speedFactor,
+      laneOffset: car.laneOffset
+    });
+  });
+  console.groupEnd();
 }
 
+function emitAeroAirflow(car) {
+  if (!car.isAeroMode) return;  // 每個車獨立判斷
+  
+  const jets = [-1, 1];
+  for (let j = 0; j < jets.length; j++) {
+    const side = jets[j];
+    const rearOffset = CARHEIGHT * 0.45;
+    const sideOffset = side * (CARWIDTH * 0.55);
+    
+    const baseX = car.x + Math.cos(car.angle + Math.PI) * rearOffset +
+                  Math.cos(car.angle + Math.PI / 2) * sideOffset;
+    const baseY = car.y + Math.sin(car.angle + Math.PI) * rearOffset +
+                  Math.sin(car.angle + Math.PI / 2) * sideOffset;
+
+    const speed = 0.3 + Math.random() * 0.4;
+    const dirAngle = car.angle + (Math.random() - 0.5) * 0.15;
+    
+    boostParticles.push({
+      type: 'airflow',
+      x: baseX, y: baseY,
+      vx: Math.cos(dirAngle) * speed,
+      vy: Math.sin(dirAngle) * speed,
+      angle: dirAngle,
+      length: 55 + Math.random() * 25,
+      width: 3 + Math.random() * 2,
+      life: 10 + Math.random() * 12,
+      maxLife: 22,
+      gravity: 0,
+      color: 'rgba(180, 240, 255, 0.8)'
+    });
+  }
+}
+
+
+// 在主要 loop 或 update 邏輯中，每幀檢查並切換圖片
+function updateCarImages() {
+  if (!aeroModeActive) return;
+  
+  // Player 車
+  if (player && player.img && player.spec && player.spec.image) {
+    const boostPath = getBoostImagePath(player.spec.image);
+    if (boostPath !== player.img.src) {
+      player.img = new Image();
+      player.img.src = boostPath;
+    }
+  }
+  
+  // 所有 AI 車
+  allCars.forEach(car => {
+    if (car.img && car.spec && car.spec.image) {
+      const boostPath = getBoostImagePath(car.spec.image);
+      if (boostPath !== car.img.src) {
+        car.img = new Image();
+        car.img.src = boostPath;
+      }
+    }
+  });
 }
 
 function emitMoveDustForCar(car)  {
@@ -1456,8 +1497,104 @@ ctx.restore();
 
 }
 
+// 只檢查 _ABoost.png（Aero Mode）
+function getAeroImagePath(originalPath) {
+  if (!originalPath || originalPath === 'null') return null;
+  const basePath = originalPath.replace(/\.png$/i, '');
+  const aeroPath = basePath + '_ABoost.png';
+  
+  const testImg = new Image();
+  testImg.src = aeroPath;
+  return (testImg.complete && testImg.naturalWidth > 0) ? aeroPath : null;
+}
+
+// 只檢查 _Boost.png（純 Boost）
+function getBoostImagePath(originalPath) {
+  if (!originalPath || originalPath === 'null') return null;
+  const basePath = originalPath.replace(/\.png$/i, '');
+  const boostPath = basePath + '_Boost.png';
+  
+  const testImg = new Image();
+  testImg.src = boostPath;
+  return (testImg.complete && testImg.naturalWidth > 0) ? boostPath : null;
+}
+
+
+// 3. Aero/Circuit Mode 判斷
+// Mode 切換通知函數
+function showModeChange(newMode) {
+  if (currentMode !== newMode) {
+    currentMode = newMode;
+    modeNotifyText = `Mode change: ${newMode} Mode`;
+    modeNotifyTimer = 120; // 顯示 2 秒 (120 幀)
+  }
+}
+
+// 完善版 Aero/Circuit 判斷
+// 移除全域 aeroModeActive，改用每個車的屬性
+function updateAeroMode(car, isPlayer) {
+  const speed = car.speed || 0;
+  let isTurning = false;
+  
+  if (isPlayer) {
+    isTurning = keys['ArrowLeft'] || keys['ArrowRight'] || Math.abs(car.driftAngle || 0) > 0.1;
+  } else {
+    isTurning = Math.abs(car.lastAISteering || 0) > 0.12 || Math.abs(car.driftAngle || 0) > 0.08;
+  }
+  
+  const speedThreshold = isPlayer ? 15 : 6.6; // AI 門檻較低
+  const shouldBeAero = speed > speedThreshold && !isTurning;
+  
+  // 每個車獨立狀態
+  const prevAero = car.isAeroMode || false;
+  car.isAeroMode = shouldBeAero;
+  
+  // 只在狀態改變時觸發通知（Player 才通知）
+  if (isPlayer && shouldBeAero !== prevAero) {
+    currentMode = shouldBeAero ? 'Aero' : 'Circuit';
+    modeNotifyTimer = 180;
+  }
+}
+
+
+
+// 4. 動態切換車輛圖片
+function switchCarImage(car, isPlayerBoosting = false) {
+  if (!car.spec?.image || car.spec.image === 'null') return;
+  
+  let targetSrc = car.spec.image;
+  
+  // 優先級 1：Player Boost
+  if (isPlayerBoosting) {
+    const boostPath = getBoostImagePath(car.spec.image);
+    if (boostPath) {
+      targetSrc = boostPath;
+    } else {
+      const aeroPath = getAeroImagePath(car.spec.image);
+      if (aeroPath) targetSrc = aeroPath;
+    }
+  }
+  // 優先級 2：Aero Mode（用車的獨立狀態）
+  else if (car.isAeroMode) {
+    const aeroPath = getAeroImagePath(car.spec.image);
+    if (aeroPath) targetSrc = aeroPath;
+  }
+  
+  if (car.img?.src !== targetSrc) {
+    car.img = new Image();
+    car.img.src = targetSrc;
+  }
+}
+
+
+
 function emitBoostForCar(car, isPlayer)  {
 
+  if (isPlayer) {
+    // Boost 時也用 switchCarImage 邏輯，保持一致
+    switchCarImage(car, true);
+  }
+  
   const jets = [-1, 1];
 
   for (let j = 0;
@@ -2006,29 +2143,6 @@ if (isBoosting && !lastIsBoosting)  {
 
 lastIsBoosting = isBoosting;
 
-if (modeNotifyTimer > 0)  {
-
-  ctx.save();
-
-  ctx.font = "italic bold 80px 'Rajdhani'";
-
-  ctx.textAlign = "center";
-
-  let alpha = modeNotifyTimer / 60;
-
-  ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-
-  ctx.shadowBlur = 20;
-
-  ctx.shadowColor = "#00ffff";
-
-  ctx.fillText(modeNotifyText, W/2, H/2 - 100);
-
-  ctx.restore();
-
-  modeNotifyTimer--;
-
-}
 
 ctx.save();
 
@@ -2370,7 +2484,7 @@ else  {
 
   if (speedRatio >= speedRatioForFlame)  {
 
-    emitSpeedFlameForCar(car, false);
+    emitAeroAirflow(car, false);
 
   }
 
@@ -2404,7 +2518,7 @@ if (!playerBoostingActive && !playerSteeringActive && wantsForwardVfx)  {
         
     if (Math.random() < flameIntensity * 0.8)  {
 
-      emitSpeedFlameForCar(player, true);
+      emitAeroAirflow(player, true);
 
         
     }
@@ -2459,69 +2573,26 @@ dustParticles = dustParticles.filter(p =>  {
 
 ctx.save();
 
-boostParticles.forEach(p =>  {
-
+boostParticles.forEach(p => {
   const alpha = p.life / p.maxLife;
+  const len = p.length;
+  const w   = p.width;
 
-  if (p.type === 'flame')  {
+  ctx.save();
+  ctx.translate(p.x - offsetX, p.y - offsetY);
+  ctx.rotate(p.angle);
+  ctx.globalAlpha = alpha;
 
-    const length = (p.length || 40) * (0.35 + alpha);
-
-    const width = (p.width || 8) * (0.6 + alpha * 0.6);
-
-    const sx = p.x - offsetX;
-
-    const sy = p.y - offsetY;
-
-    const ex = sx + Math.cos(p.angle) * length;
-
-    const ey = sy + Math.sin(p.angle) * length;
-
-    ctx.globalAlpha = Math.min(1, alpha * 1.15);
-
-    ctx.strokeStyle = p.color || `rgba(255, 120, 0, ${alpha})`;
-
-    ctx.lineWidth = width;
-
-    ctx.lineCap = 'round';
-
-    ctx.shadowBlur = 20;
-
-    ctx.shadowColor = p.color || 'rgba(255,120,0,0.9)';
-
-    ctx.beginPath();
-
-    ctx.moveTo(sx, sy);
-
-    ctx.lineTo(ex, ey);
-
-    ctx.stroke();
-
-  }
-else  {
-
-  const size = (p.size || 12) * (0.4 + alpha);
-
-  ctx.fillStyle = p.color || `rgba(0, 200, 255, ${alpha})`;
-
-  ctx.globalAlpha = Math.min(1, alpha * 1.2);
-
-  ctx.shadowBlur = 18;
-
-  ctx.shadowColor = p.color || 'rgba(0,200,255,0.9)';
-
+  ctx.strokeStyle = p.color;
+  ctx.lineWidth = w;
   ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-len, 0);   // 向後拉出一條線
+  ctx.stroke();
 
-  ctx.arc(p.x - offsetX, p.y - offsetY, size, 0, Math.PI * 2);
+  ctx.restore();
+});
 
-  ctx.fill();
-
-}
-
-}
-);
-
-ctx.restore();
 
 ctx.save();
 
@@ -2585,14 +2656,13 @@ if (typeof isBoosting !== 'undefined' && isBoosting)  {
 
 }
 
-if (player.img && player.img.complete)  {
-
+if (player.img && player.img.complete && player.img.naturalWidth > 0) {
   let shakeX = isBoosting ? (Math.random() - 0.5) * 2 : 0;
-
   let shakeY = isBoosting ? (Math.random() - 0.5) * 2 : 0;
-
   ctx.drawImage(player.img, -CARWIDTH / 2 + shakeX, -CARHEIGHT / 2 + shakeY, CARWIDTH, CARHEIGHT);
-
+} else {
+  // 圖片載入失敗時用備用圖或跳過
+  console.warn('Player image not ready:', player.img?.src);
 }
 
 ctx.restore();
@@ -3122,139 +3192,92 @@ if (gameState !== "title")  {
 
 }
 
-if (gameState === 'racing')  {
-
+if (gameState === 'racing') {
   const currentCarSpec = CARSPECS[selectedCar];
-
   const rawName = currentCarSpec.image.split('/').pop().replace('.png', '').replace(/_/g, ' ');
-
   const carNameLower = rawName.toLowerCase();
 
   updateAIAvatarByCarName(carNameLower);
 
   let aiPrefix = "▶ AI: ";
-
   if (carNameLower.includes("asurada")) aiPrefix = "▶ ASURADA: ";
-
   else if (carNameLower.includes("garland")) aiPrefix = "▶ GARLAND: ";
-
   else if (carNameLower.includes("ogre")) aiPrefix = "▶ OGRE: ";
-
   else if (carNameLower.includes("al-zard")) aiPrefix = "▶ AL-ZARD: ";
-
   else if (carNameLower.includes("ex-zard")) aiPrefix = "▶ EX-ZARD: ";
 
   let aiMsg = "";
 
+  // 🔥 原有優先級（保持不變）
   if (inPit) aiMsg = "SYSTEM CHECK... ALL UNITS GO.";
-
   else if (isBoosting) aiMsg = "BOOST ON! PRESSURE CRITICAL!";
-
   else if (tireHealth.some(h => h < 30)) aiMsg = "CAUTION: TIRE GRIP IS DOWN.";
-
   else if (wantsToPit) aiMsg = "PIT-IN STRATEGY CONFIRMED.";
+  
+  // 🔥 Aero Mode 通知（最低優先級，只在其他條件都不符合時顯示）
+  else if (modeNotifyTimer > 0) {
+    aiMsg = `Mode change: ${currentMode} Mode`;
+  }
 
-  if (aiMsg !== "" || isBoosting)  {
-
+  // 原有的繪圖邏輯完全不變
+  if (aiMsg !== "" || isBoosting) {
     ctx.save();
-
     const boxW = 520;
-
     const boxH = 80;
-
     const boxX = 475;
-
     const boxY = H - 270;
-
+    
     ctx.fillStyle = "rgba(0, 15, 30, 0.85)";
-
     ctx.strokeStyle = isBoosting ? "#ff00ff" : "#00ffff";
-
     ctx.lineWidth = 3;
-
     ctx.beginPath();
-
     ctx.moveTo(boxX, boxY);
-
     ctx.lineTo(boxX + boxW - 40, boxY);
-
     ctx.lineTo(boxX + boxW, boxY + 40);
-
     ctx.lineTo(boxX + boxW, boxY + boxH);
-
     ctx.lineTo(boxX + 40, boxY + boxH);
-
     ctx.lineTo(boxX, boxY + boxH - 40);
-
     ctx.closePath();
-
     ctx.fill();
-
     ctx.stroke();
 
     ctx.fillStyle = (Date.now() % 500 < 250) ? "#00ffff" : "rgba(0, 255, 255, 0.5)";
-
     ctx.fillRect(boxX + 15, boxY + 15, 8, boxH - 30);
 
     ctx.save();
-
     ctx.font = "bold 10px monospace";
-
     ctx.fillStyle = "rgba(0, 255, 255, 0.6)";
-
     ctx.textAlign = "right";
-
-    for (let j = 0;
-    j < 5;
-    j++)  {
-
+    for (let j = 0; j < 5; j++) {
       const hex = "0x" + Math.random().toString(16).toUpperCase().substring(2, 6);
-
       ctx.fillText(hex, boxX + boxW - 15, boxY + 25 + (j * 10));
-
     }
+    ctx.globalAlpha = Math.random();
+    ctx.fillStyle = "#00ffff";
+    ctx.fillRect(boxX + boxW - 5, boxY + 10, 2, boxH - 20);
+    ctx.restore();
 
-  ctx.globalAlpha = Math.random();
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#00ffff";
+    ctx.font = "bold 28px 'Rajdhani'";
+    ctx.fillStyle = "#fbff00";
+    ctx.textAlign = "left";
+    ctx.fillText(aiPrefix, boxX + 40, boxY + 50);
 
-  ctx.fillStyle = "#00ffff";
-
-  ctx.fillRect(boxX + boxW - 5, boxY + 10, 2, boxH - 20);
-
-  ctx.restore();
-
-  ctx.shadowBlur = 12;
-
-  ctx.shadowColor = "#00ffff";
-
-  ctx.font = "bold 28px 'Rajdhani'";
-
-  ctx.fillStyle = "#fbff00";
-
-  ctx.textAlign = "left";
-
-  ctx.fillText(aiPrefix, boxX + 40, boxY + 50);
-
-  ctx.font = "26px 'Rajdhani'";
-
-  ctx.fillStyle = "#ffffff";
-
-  const prefixWidth = ctx.measureText(aiPrefix).width;
-
-  let displayMsg = aiMsg;
-
-  if (isBoosting && aiMsg === "BOOST ON! PRESSURE CRITICAL!")  {
-
-    displayMsg = "AERO MODE / BOOST ON";
-
+    ctx.font = "26px 'Rajdhani'";
+    ctx.fillStyle = "#ffffff";
+    const prefixWidth = ctx.measureText(aiPrefix).width;
+    
+    let displayMsg = aiMsg;
+    if (isBoosting && aiMsg === "BOOST ON! PRESSURE CRITICAL!") {
+      displayMsg = "AERO MODE / BOOST ON";
+    }
+    
+    ctx.fillText(displayMsg, boxX + 45 + prefixWidth, boxY + 50);
+    ctx.restore();
   }
-
-ctx.fillText(displayMsg, boxX + 45 + prefixWidth, boxY + 50);
-
-ctx.restore();
-
 }
 
-}
  
 }
 
@@ -3292,13 +3315,71 @@ ctx.restore();
 
 }
 
+// 在 loop() 最後，取代右上角版本
+if (gameState === 'racing') {
+  ctx.save();
+  ctx.font = "bold 14px Rajdhani";  // 字體小一點
+  ctx.fillStyle = "#00ff00";        // 綠色不刺眼
+  ctx.textAlign = "left";           // 左對齊
+  ctx.shadowBlur = 6;
+  ctx.shadowColor = "#00ff00";
+  
+  let yPos = 30;  // 從頂部 30px 開始
+  
+  // Player 車速（最上方）
+  ctx.fillStyle = "#ffff00";  // Player 用黃色突出
+  ctx.fillText(`PLAYER: ${player?.speed?.toFixed(1) || 0}/${(player?.maxSpeedLimit || 0)?.toFixed(1)} ${player?.isAeroMode ? '[AERO]' : ''}`, 20, yPos);
+  yPos += 22;
+  
+  // Top 3 AI（綠色）
+  ctx.fillStyle = "#00ff00";
+  const aiSpeeds = allCars
+    .map((car, i) => ({
+      speed: car.speed || 0,
+      max: car.maxSpeedLimit || 0,
+      aero: car.isAeroMode,
+      name: car.spec?.image?.split('/').pop()?.replace('.png', '')?.slice(0, 12) || `AI${i}`  // 名字截斷
+    }))
+    .sort((a, b) => b.speed - a.speed)
+    .slice(0, 3);
+  
+  aiSpeeds.forEach((ai, i) => {
+    const aeroMark = ai.aero ? '[AERO]' : '';
+    ctx.fillText(`${i+1}. ${ai.name}: ${ai.speed.toFixed(1)}/${ai.max.toFixed(1)}${aeroMark}`, 20, yPos);
+    yPos += 18;
+  });
+  
+  ctx.restore();
+}
+
+
 if (gameState !== 'title')  {
 
   drawMinimap();
 
+ // Aero 系統更新
+  if (player) {
+    updateAeroMode(player, true);
+    if (isBoosting) {
+      switchCarImage(player, true);
+      emitBoostForCar(player, true);
+    } else {
+      switchCarImage(player, false);
+      if (player.isAeroMode) emitAeroAirflow(player);
+    }
+  }
+  
+  allCars.forEach(car => {
+    updateAeroMode(car, false);
+    switchCarImage(car, false);
+    if (car.isAeroMode) emitAeroAirflow(car);  // AI 獨立觸發！
+  });
+  
   requestAnimationFrame(loop);
 
 }
+
+
 
 }
 
