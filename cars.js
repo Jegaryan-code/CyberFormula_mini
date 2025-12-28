@@ -3,10 +3,10 @@ const CARSPECS = [
   { image: "1. SUGO/Asurada_GSX_Rally.png", acceleration: 4.8, handling: 0.7 },
   
   { image: "1. SUGO/Super_Asurada_01.png", acceleration: 5.1, handling: 0.8 },
-  { image: "1. SUGO/n-Asurada.png", acceleration: 5.2, handling: 0.7 },
-  { image: "1. SUGO/n-Asurada-0.png", acceleration: 5.25, handling: 0.7 },
+  { image: "1. SUGO/S-Asurada-AKF-11.png", acceleration: 5.25, handling: 0.7 },
   { image: "1. SUGO/n-Asurada_AKF-0_G.png", acceleration: 5.3, handling: 0.7 },
   { image: "1. SUGO/n-Asurada_AKF-0_G_A.png", acceleration: 5.3, handling: 0.7 },
+  { image: "1. SUGO/Vision-Asurada.png", acceleration: 5.2, handling: 0.7 },
   
   { image: "1. SUGO/Garland.png", acceleration: 5.0, handling: 0.8 },
 
@@ -41,5 +41,8 @@ const CARSPECS = [
   
   { image: "6. OTHERS SINGLE RACER/Albatrander_602.png", acceleration: 4.6, handling: 0.7 },
   { image: "6. OTHERS SINGLE RACER/EL-CONDOL_B-15.png", acceleration: 4.5, handling: 0.7 },
-  { image: "6. OTHERS SINGLE RACER/SILENT_SCREAMER-β.png", acceleration: 4.6, handling: 0.7 }
+  { image: "6. OTHERS SINGLE RACER/SILENT_SCREAMER-β.png", acceleration: 4.6, handling: 0.7 },
+  { image: "6. OTHERS SINGLE RACER/Advance_Phoenix.png", acceleration: 5.3, handling: 0.8 }
 ];
+
+
