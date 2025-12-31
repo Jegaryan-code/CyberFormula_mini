@@ -8,7 +8,8 @@ const CARSPECS = [
   { image: "1. SUGO/n-Asurada_AKF-0_G_A.png", acceleration: 5.3, handling: 0.7 },
   { image: "1. SUGO/Vision-Asurada.png", acceleration: 5.2, handling: 0.7 },
   
-  { image: "1. SUGO/Garland.png", acceleration: 5.0, handling: 0.8 },
+  { image: "1. SUGO/Garland.png", acceleration: 5.2, handling: 0.8 },
+  { image: "1. SUGO/Garland_B.png", acceleration: 5.3, handling: 0.8 },
 
   { image: "2. AOI/Superion_GT.png", acceleration: 4.8, handling: 0.7 },
   { image: "2. AOI/Ex-Superion_ZA-8.png", acceleration: 5.1, handling: 0.75 },
