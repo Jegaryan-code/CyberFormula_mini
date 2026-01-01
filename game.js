@@ -79,6 +79,13 @@ const BASE_MAX_SPEED = 30;
 
 const MAX_SPEED_BONUS = 4;
 
+// 在檔案頂部，變數宣告區
+let lastTapTime = { ArrowLeft: 0, ArrowRight: 0 };
+let isDriftMode = false;
+const DOUBLE_TAP_DELAY = 350; // 稍微放寬判定時間，增加成功率
+
+
+
 function getCarMaxSpeed(car)  {
 
   if (!car.spec) return BASE_MAX_SPEED;
@@ -301,74 +308,59 @@ ctx.restore();
 
 }
 
-function updateCarPhysics(car, acceleration, steering)  {
+function updateCarPhysics(car, acceleration, steering) {
+  if (car.isAI) {
+    // --- AI 物理：配合四次方曲線，阻力設為 0.99 ---
+    car.forwardSpeed = (car.forwardSpeed || 0) + acceleration;
+    car.forwardSpeed *= 0.995; // 稍微增加阻力感
+    car.sideSpeed = 0; car.driftAngle = 0;
+    car.angle += steering * 0.1;
+    car.speed = car.forwardSpeed;
+} else {
+    const maxS = car.maxSpeedLimit || 26.7;
+    const sRatio = Math.min(1.0, (car.forwardSpeed || 0) / maxS);
+    
+    // 關鍵修正：只有當按住加速鍵時才計算 PowerCurve
+    let processedAccel = 0;
+    if (keys['ArrowUp']) {
+        // 使用你測試好的 sRatio^2 + 0.01
+        let playerPowerCurve = Math.pow(sRatio, 2.2) + 0.04; 
+        processedAccel = acceleration * playerPowerCurve;
+    } else if (keys['ArrowDown']) {
+        processedAccel = -0.5; // 煞車感
+    }
 
-  const MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 34;
+    car.forwardSpeed = (car.forwardSpeed || 0) + processedAccel;
 
-  const sideFrictionFactor = (car && car.isAI) ? 0.94 : 0.95;
+    // 阻力優化：當不按加速時，阻力應該要更大一點（模擬引擎煞車）
+    const baseDamping = keys['ArrowUp'] ? (0.992 + (sRatio * 0.002)) : 0.9995;
+    car.forwardSpeed *= baseDamping;
 
-  const sideSpeedGeneration = (car && car.isAI) ? 3.8 : 3.0;
+    // 防止倒車或負向速度
+    if (car.forwardSpeed < 0) car.forwardSpeed = 0;
 
-  const track = TRACKS[currentTrack];
-
-  const trackX = track.playerStart.x * SCALE;
-
-  const trackY = track.playerStart.y * SCALE;
-
-  const distanceToStart = Math.hypot(player.x - trackX, player.y - trackY);
-
-  if (distanceToStart > 100)  {
-
-    player.x = trackX;
-
-    player.y = trackY;
-
-    player.angle = track.playerStart.angle;
-
-    player.speed = 0;
-
-  }
-
-const steeringClamp = (car && car.isAI) ? 0.6 : 0.4;
-
-steering = Math.max(-steeringClamp, Math.min(steering, steeringClamp));
-
-car.forwardSpeed = (car.forwardSpeed || car.speed || 0) + acceleration;
-
-car.forwardSpeed = Math.max(-10, Math.min(car.forwardSpeed, MAX_SPEED));
-
-car.angle += steering * car.forwardSpeed / 10;
-
-car.sideSpeed = car.sideSpeed || 0;
-
-const steerDeadzone = (car && car.isAI) ? 0 : 0.01;
-
-if (Math.abs(steering) > steerDeadzone)  {
-
-  const slipMul = (car && car.isAI) ? 0.14 : 1.0;
-
-  car.sideSpeed -= car.forwardSpeed * steering * sideSpeedGeneration * slipMul;
-
+    if (!isDriftMode) {
+        const turnLoss = Math.abs(steering) * 0.08; 
+        car.forwardSpeed *= (1.0 - turnLoss);
+        car.sideSpeed = (car.sideSpeed || 0) * 0.8; 
+        car.driftAngle = 0;
+        car.angle += steering * 0.08;
+        car.speed = car.forwardSpeed;
+    } else {
+        // 你的甩尾設定...
+        car.sideSpeed = (car.sideSpeed || 0) - (car.forwardSpeed * steering * 4.5);
+        car.sideSpeed *= 0.92;
+        car.forwardSpeed *= 0.982; 
+        car.driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
+        car.speed = Math.hypot(car.forwardSpeed, car.sideSpeed);
+        car.angle += steering * 0.04;
+    }
 }
 
-car.sideSpeed *= sideFrictionFactor;
-
-car.forwardSpeed *= (car && car.isAI) ? 0.995 : 0.992;
-
-const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
-
-const driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
-
-const actualAngle = car.angle + driftAngle;
-
-car.x += Math.cos(actualAngle) * totalSpeed * MOVE_SCALE;
-
-car.y += Math.sin(actualAngle) * totalSpeed * MOVE_SCALE;
-
-car.speed = totalSpeed;
-
-car.driftAngle = driftAngle;
-
+  // 坐標更新
+  const actualAngle = car.angle + (car.driftAngle || 0);
+  car.x += Math.cos(actualAngle) * car.speed * MOVE_SCALE;
+  car.y += Math.sin(actualAngle) * car.speed * MOVE_SCALE;
 }
 
 function drawDashboard(speed)  {
@@ -588,47 +580,6 @@ currentAIName = "AI";
 
 }
 
-function updateCarPhysics(car, acceleration, steeringAngle)  {
-
-  steeringAngle = Math.max(-0.4, Math.min(steeringAngle, 0.4));
-
-  car.forwardSpeed = (car.forwardSpeed || car.speed) + acceleration;
-
-  const maxSpeed = 26;
-
-  car.forwardSpeed = Math.max(-10, Math.min(car.forwardSpeed, maxSpeed));
-
-  car.angle += steeringAngle * car.forwardSpeed / 15;
-
-  const frictionFactor = 0.05 - (car.spec.handling || 1) * 0.02;
-
-  car.sideSpeed = car.sideSpeed || 0;
-
-  if(Math.abs(steeringAngle) > 0.01)  {
-
-    car.sideSpeed += car.forwardSpeed * steeringAngle * 0.2;
-
-  }
-
-car.sideSpeed *= frictionFactor;
-
-car.forwardSpeed *= 0.992;
-
-const totalSpeed = Math.hypot(car.forwardSpeed, car.sideSpeed);
-
-const driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
-
-const actualAngle = car.angle + driftAngle;
-
-car.x += Math.cos(actualAngle) * totalSpeed;
-
-car.y += Math.sin(actualAngle) * totalSpeed;
-
-car.speed = totalSpeed;
-
-car.driftAngle = driftAngle;
-
-}
 
 function drawMinimap()  {
 
@@ -744,234 +695,114 @@ function checkCollisions(car1, car2)  {
 
 }
 
-function followWaypoints(car)  {
-
+function followWaypoints(car) {
+  if (!car.isAI) return;
   if (car.waypointIndex == null) car.waypointIndex = 0;
-
   const wp = TRACKS[currentTrack].waypoints;
+  if (!wp || !wp.length) return;
 
-  if (!wp.length) return;
-
+  // --- 1. 目標導航計算 ---
   const baseTarget = wp[car.waypointIndex];
-
   let tx = baseTarget.x * SCALE;
-
   let ty = baseTarget.y * SCALE;
-
   const nextIndex = (car.waypointIndex + 1) % wp.length;
-
   const nx = wp[nextIndex].x * SCALE;
-
   const ny = wp[nextIndex].y * SCALE;
-
-  let dirX = nx - tx;
-
-  let dirY = ny - ty;
-
-  const len = Math.hypot(dirX, dirY) || 1;
-
-  dirX /= len;
-  dirY /= len;
-
-  const nX = -dirY;
-
+  
+  const segDX = nx - tx;
+  const segDY = ny - ty;
+  const segLen = Math.hypot(segDX, segDY) || 1;
+  const dirX = segDX / segLen;
+  const dirY = segDY / segLen;
+  const nX = -dirY; // 法向量
   const nY = dirX;
 
-  const baseOffset = car.laneOffset || 0;
-
+  // --- 2. 強化版避車與防止疊車 (Repulsion) 邏輯 ---
+  let sideRepulsion = 0; 
   let frontCar = null;
-
   let minDist = Infinity;
-
+  
+  // 檢查所有車輛（包含玩家）來決定偏移
   const candidates = [...allCars, player].filter(c => c !== car);
-
-  candidates.forEach(other =>  {
-
+  candidates.forEach(other => {
     const dx = other.x - car.x;
-
     const dy = other.y - car.y;
-
     const dist = Math.hypot(dx, dy);
-
-    const rel = dx * dirX + dy * dirY;
-
-    if (rel > 0 && dist < 400 && dist < minDist)  {
-
+    
+    // 判定前方車輛
+    const relForward = dx * dirX + dy * dirY;
+    if (relForward > 0 && dist < 450 && dist < minDist) {
       minDist = dist;
-
       frontCar = other;
-
     }
 
-}
-);
+    // 防止疊車：如果兩車太近，產生側向排斥力
+    if (dist < 130) {
+      const relLateral = dx * nX + dy * nY;
+      // 往對方相反的方向推開，dist 越近力道越大
+      sideRepulsion -= Math.sign(relLateral) * (200 / (dist + 1));
+    }
+  });
 
-const wantOvertake =
-frontCar &&
-minDist < 300 && 
-(car.forwardSpeed || 0) >
-(frontCar.forwardSpeed || 0) + 1.0;
-
-if (car.overtakeTimer == null) car.overtakeTimer = 0;
-
-if (car.overtakeSide == null) car.overtakeSide = 0;
-
-if (car.overtakeTimer <= 0 && wantOvertake)  {
-
-  car.overtakeTimer = 90 + Math.random() * 60;
-
-  const lateral = (frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY;
-
-  const sideRaw = Math.sign(lateral);
-
-  car.overtakeSide = sideRaw === 0 ? (Math.random() < 0.5 ? -1 : 1) : sideRaw;
-
-}
-
-if (car.overtakeTimer > 0)  {
-
-  car.overtakeTimer--;
-
-}
-else  {
-
-  car.overtakeSide = 0;
-
-}
-
-const AVOID_OFFSET = 180;
-
-const OVERTAKE_OFFSET = 420;
-
-let targetOffset = baseOffset;
-
-if (car.overtakeSide !== 0)  {
-
-  targetOffset = baseOffset + car.overtakeSide * OVERTAKE_OFFSET;
-
-}
-else if (frontCar && minDist < 260)  {
-
-  const lateral = (frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY;
-
-  const side = Math.sign(lateral) || 1;
-
-  targetOffset = baseOffset + side * AVOID_OFFSET;
-
-}
-
-if (frontCar && minDist < 180)  {
-
-  const lateral = (frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY;
-
-  if (Math.abs(lateral) < 40)  {
-
-    const forceSide = lateral >= 0 ? -1 : 1;
-
-    targetOffset = baseOffset + forceSide * (OVERTAKE_OFFSET * 0.9);
-
-    car.overtakeSide = forceSide;
-
-    car.overtakeTimer = Math.max(car.overtakeTimer, 60);
-
+  const inOvertake = car.overtakeTimer > 0 && car.overtakeSide !== 0;
+  let targetOffset = car.laneOffset || 0;
+  
+  // 優先執行超車偏移，否則執行排斥偏移
+  if (inOvertake) {
+    targetOffset += car.overtakeSide * 420;
+  } else {
+    targetOffset += sideRepulsion; 
   }
 
-}
+  if (car.currentOffset == null) car.currentOffset = targetOffset;
+  car.currentOffset += (targetOffset - car.currentOffset) * 0.1;
 
-if (car.currentOffset == null) car.currentOffset = baseOffset;
+  const targetX = tx + nX * car.currentOffset;
+  const targetY = ty + nY * car.currentOffset;
+  const finalDX = targetX - car.x;
+  const finalDY = targetY - car.y;
 
-car.currentOffset += (targetOffset - car.currentOffset) * 0.08;
-
-const targetX = tx + nX * car.currentOffset;
-
-const targetY = ty + nY * car.currentOffset;
-
-const dx = targetX - car.x;
-
-const dy = targetY - car.y;
-
-const distToWp = Math.hypot(dx, dy);
-
-if (distToWp < 500)  {
-
-  car.waypointIndex = (car.waypointIndex + 1) % wp.length;
-
-}
-
-const targetAngle = Math.atan2(dy, dx);
-
-let angleDiff = targetAngle - car.angle;
-
-angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
-
-const steeringAngle = angleDiff * 0.28;
-
-const speedFactor = (car && typeof car.speedFactor === 'number') ? car.speedFactor : 1.0;
-
-const maxSpeedBase = 26.7 * speedFactor;
-
-const AI_ACCEL_SCALE = 2.0;
-
-let acceleration = 0;
-
-const inOvertake = car.overtakeTimer > 0 && car.overtakeSide !== 0;
-
-if (frontCar && minDist < 130 && !inOvertake)  {
-
-  if (car.forwardSpeed > maxSpeedBase * 0.75)  {
-
-    acceleration = -3.0;
-
+  if (Math.hypot(finalDX, finalDY) < 500) {
+    car.waypointIndex = (car.waypointIndex + 1) % wp.length;
   }
-else  {
 
-  acceleration = car.spec.acceleration * 0.0055 * AI_ACCEL_SCALE * SPEED_UNIT_SCALE;
+  // --- 3. 轉向與極致四次方加速曲線 ---
+  const targetAngle = Math.atan2(finalDY, finalDX);
+  let angleDiff = Math.atan2(Math.sin(targetAngle - car.angle), Math.cos(targetAngle - car.angle));
+  const steeringAngle = angleDiff * 0.35;
 
-}
-
-}
-else  {
-
-  const turnAmt = Math.min(1, Math.abs(angleDiff) / 0.6);
-
-  const straightBoost = 1.0 + (1.0 - turnAmt) * 0.25;
-
-  acceleration = car.spec.acceleration * (inOvertake ? 0.0060 : 0.0052) * AI_ACCEL_SCALE * straightBoost * SPEED_UNIT_SCALE;
-
-  const maxSpeed = inOvertake ? maxSpeedBase + 0.4 * speedFactor : maxSpeedBase;
-
+  const speedFactor = car.speedFactor || 1.0;
+  const maxSpeed = inOvertake ? (26.7 * speedFactor + 1.2) : (26.7 * speedFactor);
   car.maxSpeedLimit = maxSpeed;
 
-  if (car.forwardSpeed > maxSpeed) acceleration = 0;
+  const currentSpeed = Math.abs(car.forwardSpeed || 0);
+  const sRatio = Math.min(1.0, currentSpeed / maxSpeed);
 
+  // 【科學加速修正】使用五次方曲線，讓加速時間大幅拉長
+  // 起步動力僅給 0.015 保底，讓它像重型賽車緩慢起步
+  const baseAccel = 0.85; 
+  const powerRamp = Math.pow(sRatio, 7.5) + 0.08; 
+  let acceleration = car.spec.acceleration * baseAccel * SPEED_UNIT_SCALE * powerRamp * (1.0 - sRatio);
+
+  // 彎道明顯掉速
+  const turnIntensity = Math.abs(steeringAngle);
+  if (turnIntensity > 0.0001) {
+    acceleration *= 0.20; 
+  }
+
+  if (currentSpeed >= maxSpeed) acceleration = 0;
+
+  car.lastAISteering = steeringAngle;
+  
+  // 4. 更新物理與狀態
+  updateCarPhysics(car, acceleration, steeringAngle);
+
+  // Aero 門檻：85% 速度才變形
+  car.isAeroMode = (currentSpeed > maxSpeed * 0.85) && (turnIntensity < 0.15);
+  switchCarImage(car, false);
+  if (car.isAeroMode) emitAeroAirflow(car);
 }
 
-if (car.maxSpeedLimit == null) car.maxSpeedLimit = maxSpeedBase;
-
-const isTurning = Math.abs(steeringAngle) > 0.1;
-
-if (isTurning)  {
-
-  acceleration *= 0.2;
-
-}
-
-car.lastAIAcceleration = acceleration;
-
-car.lastAISteering = steeringAngle;
-
-updateCarPhysics(car, acceleration, steeringAngle);
-updateAeroMode(car, false);
-switchCarImage(car, false);
-if (car.isAeroMode) emitAeroAirflow(car);
-
-console.log(`AI ${car.spec?.image?.split('/').pop() || 'Unknown'}: 
-  speed=${car.speed?.toFixed(1)}, 
-  maxSpeedLimit=${car.maxSpeedLimit?.toFixed(1)}, 
-  isAero=${car.isAeroMode}, 
-  steering=${car.lastAISteering?.toFixed(3)}`);
-
-}
 
 function loadTrack(i)  {
 
@@ -1345,8 +1176,8 @@ function emitAeroAirflow(car) {
       vx: Math.cos(dirAngle) * speed,
       vy: Math.sin(dirAngle) * speed,
       angle: dirAngle,
-      length: 55 + Math.random() * 25,
-      width: 3 + Math.random() * 2,
+      length: 8 + Math.random() * 5,
+      width: 1 + Math.random() * 0.5,
       life: 10 + Math.random() * 12,
       maxLife: 22,
       gravity: 0,
@@ -1533,30 +1364,26 @@ function showModeChange(newMode) {
 // 完善版 Aero/Circuit 判斷
 // 移除全域 aeroModeActive，改用每個車的屬性
 function updateAeroMode(car, isPlayer) {
-  const speed = car.speed || 0;
-  let isTurning = false;
+  if (!car) return;
+  const currentSpeed = car.forwardSpeed || 0;
+  const maxS = car.maxSpeedLimit || 26.7;
   
-  if (isPlayer) {
-    isTurning = keys['ArrowLeft'] || keys['ArrowRight'] || Math.abs(car.driftAngle || 0) > 0.1;
-  } else {
-    isTurning = Math.abs(car.lastAISteering || 0) > 0.12 || Math.abs(car.driftAngle || 0) > 0.08;
-  }
-  
-  const speedThreshold = isPlayer ? 15 : 6.6; // AI 門檻較低
-  const shouldBeAero = speed > speedThreshold && !isTurning;
-  
-  // 每個車獨立狀態
-  const prevAero = car.isAeroMode || false;
-  car.isAeroMode = shouldBeAero;
-  
-  // 只在狀態改變時觸發通知（Player 才通知）
-  if (isPlayer && shouldBeAero !== prevAero) {
-    currentMode = shouldBeAero ? 'Aero' : 'Circuit';
-    modeNotifyTimer = 180;
+  // 嚴格門檻：玩家 80%, AI 90%
+  const ratio = isPlayer ? 0.80 : 0.90;
+  const speedThreshold = maxS * ratio;
+
+  // 判定是否正在大力轉彎
+  let isTurning = isPlayer ? (keys['ArrowLeft'] || keys['ArrowRight']) : (Math.abs(car.lastAISteering) > 0.15);
+
+  const prevAero = car.isAeroMode;
+  // 修正條件：速度夠快 且 沒在大幅轉彎 且 不是正在甩尾
+  car.isAeroMode = (currentSpeed > speedThreshold) && !isTurning && (!isPlayer || !isDriftMode);
+
+  if (isPlayer && car.isAeroMode !== prevAero) {
+    currentMode = car.isAeroMode ? 'AERO' : 'CIRCUIT';
+    modeNotifyTimer = 120;
   }
 }
-
-
 
 // 4. 動態切換車輛圖片
 function switchCarImage(car, isPlayerBoosting = false) {
@@ -1701,36 +1528,27 @@ const handleKeyDown = (e) =>  {
     }
 
 }
-else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key))  {
-
-  e.preventDefault();
-
-  keys[e.key] = true;
-
-}
-
-}
-;
-
-const handleKeyUp = (e) =>  {
-
-  if (e.code === 'Space')  {
-
-    isBoosting = false;
-
+else if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    const now = Date.now();
+    // 如果兩次按下的間隔小於 300ms，觸發甩尾鎖定
+    if (now - lastTapTime[e.key] < DOUBLE_TAP_DELAY) {
+      isDriftLocked = true; 
+    }
+    lastTapTime[e.key] = now;
+    keys[e.key] = true;
+  } else if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
+    keys[e.key] = true;
   }
-else if (e.key in keys)  {
+};
 
-  keys[e.key] = false;
+const handleKeyUp = (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    isDriftLocked = false; // 放開按鍵就解除甩尾
+  }
+  if (e.key in keys) keys[e.key] = false;
+};
 
-}
 
-}
-;
-
-window.addEventListener('keydown', handleKeyDown);
-
-window.addEventListener('keyup', handleKeyUp);
 
 function updateTireWear(car, deltaTime)  {
 
@@ -2461,15 +2279,15 @@ car.lastTireMarkPosR =  {
 
 if (car.speed > 0.6) emitMoveDustForCar(car);
 
-const AI_SPEED_FLAME_FIXED = 18.0;
+const AI_SPEED_FLAME_FIXED = 27.5;
 
-const AI_SPEED_FLAME_THRESHOLD = Math.min(AI_MAX_SPEED * 0.4, AI_SPEED_FLAME_FIXED);
+const AI_SPEED_FLAME_THRESHOLD = Math.min(AI_MAX_SPEED * 0.2, AI_SPEED_FLAME_FIXED);
 
 const aiTotalSpeed = Math.abs(car.speed || 0);
 
 if (car.isBoosting)  {
 
-  if (Math.random() < 0.7) emitBoostForCar(car, false);
+  if (Math.random() < 0.9) emitBoostForCar(car, false);
 
 }
 else  {
@@ -2987,9 +2805,21 @@ const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
 
 const actualAngle = player.angle + driftAngle;
 
-player.x += Math.cos(actualAngle) * totalSpeed * MOVE_SCALE;
+if (player && gameState === 'racing') {
+    // 取得目前的油門與轉向輸入
+    let acc = 0;
+    if (keys['ArrowUp']) acc = 0.4; // 這裡的數值參考你原本的加速邏輯
+    if (keys['ArrowDown']) acc = -0.1;
+    
+    let steer = 0;
+    if (keys['ArrowLeft']) steer = -0.1;
+    if (keys['ArrowRight']) steer = 0.1;
 
-player.y += Math.sin(actualAngle) * totalSpeed * MOVE_SCALE;
+    // 直接呼叫物理引擎
+    updateCarPhysics(player, acc, steer);
+    
+    // --- 務必刪除或註解掉原本這裡的 player.x += 和 player.y += ---
+}
 
 player.speed = totalSpeed;
 
@@ -3528,54 +3358,49 @@ pitBtn.addEventListener('mousedown', handlePitPress);
 
 }
 
-window.addEventListener('keydown', e =>  {
-
-  if (e.code === 'Space')  {
-
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
     e.preventDefault();
-
-    if (boostMeter > 0 && boostCooldown <= 0)  {
-
-      isBoosting = true;
-
-    }
-
-}
-else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key))  {
-
-  e.preventDefault();
-
-  keys[e.key] = true;
-
-}
-else if (e.key === 'p' || e.key === 'P')  {
-
-  if (gameState === 'racing' && !playerAutoDriving && !inPit)  {
-
-    wantsToPit = true;
-
+    if (boostMeter > 0 && boostCooldown <= 0) isBoosting = true;
+    return;
   }
 
-}
+	if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+			e.preventDefault();
+			
+			// 檢查 keys[e.key] 是否正確阻擋了重複觸發
+			if (!keys[e.key]) {
+				const now = Date.now();
+				const interval = now - lastTapTime[e.key];
+				
+				console.log(`按下了 ${e.key}, 間隔時間: ${interval}ms`); // F12 看到這個代表偵測有在跑
 
-}
-);
-
-window.addEventListener('keyup', e =>  {
-
-  if (e.code === 'Space')  {
-
-    isBoosting = false;
-
+				if (interval < DOUBLE_TAP_DELAY && interval > 30) {
+					isDriftMode = true;
+					console.log("%c >>> 甩尾模式啟動成功 <<< ", "color: yellow; background: red; font-weight: bold;");
+				}
+				lastTapTime[e.key] = now;
+			}
+			keys[e.key] = true;
+		}
+  else if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
+    e.preventDefault();
+    keys[e.key] = true;
   }
-else  {
+  else if (e.key.toLowerCase() === 'p') {
+    if (gameState === 'racing' && !playerAutoDriving && !inPit) wantsToPit = true;
+  }
+});
 
-  keys[e.key] = false;
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space') isBoosting = false;
 
-}
+  if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    isDriftMode = false; // 放開方向鍵，甩尾狀態立即結束
+  }
 
-}
-);
+  if (e.key in keys) keys[e.key] = false;
+});
 
 loadTrack(0);
 
