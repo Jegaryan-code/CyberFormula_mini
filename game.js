@@ -310,54 +310,62 @@ ctx.restore();
 
 function updateCarPhysics(car, acceleration, steering) {
   if (car.isAI) {
-    // --- AI 物理：配合四次方曲線，阻力設為 0.99 ---
     car.forwardSpeed = (car.forwardSpeed || 0) + acceleration;
-    car.forwardSpeed *= 0.995; // 稍微增加阻力感
+    car.forwardSpeed *= 0.995;
     car.sideSpeed = 0; car.driftAngle = 0;
     car.angle += steering * 0.1;
     car.speed = car.forwardSpeed;
-} else {
-    const maxS = car.maxSpeedLimit || 26.7;
+  } else {
+    // --- 玩家物理修正 ---
+    const baseMaxS = 26.7;
+    // Boost 時提高極速上限
+    const maxS = isBoosting ? baseMaxS * 2.5 : baseMaxS;
     const sRatio = Math.min(1.0, (car.forwardSpeed || 0) / maxS);
     
-    // 關鍵修正：只有當按住加速鍵時才計算 PowerCurve
     let processedAccel = 0;
-    if (keys['ArrowUp']) {
-        // 使用你測試好的 sRatio^2 + 0.01
-        let playerPowerCurve = Math.pow(sRatio, 2.2) + 0.04; 
-        processedAccel = acceleration * playerPowerCurve;
+
+    if (isBoosting) {
+      // 【關鍵修正】Boost 模式：無視科學衰減，強制給予高爆發力
+      // 即使在 MAX 邊緣，也要能繼續推上去
+      processedAccel = 0.5 * (1.1 - sRatio); 
+    } else if (keys['ArrowUp']) {
+      // 正常加速：起步快，後段慢的衰減曲線
+      let playerPowerCurve = Math.pow(1.0 - sRatio, 0.15);
+      processedAccel = acceleration * 0.6 * playerPowerCurve;
+      
+      // 保底推力，確保能慢速磨上 baseMaxS
+      if (sRatio < 0.98) processedAccel += 0.012;
     } else if (keys['ArrowDown']) {
-        processedAccel = -0.5; // 煞車感
+      processedAccel = -0.8;
     }
 
     car.forwardSpeed = (car.forwardSpeed || 0) + processedAccel;
 
-    // 阻力優化：當不按加速時，阻力應該要更大一點（模擬引擎煞車）
-    const baseDamping = keys['ArrowUp'] ? (0.992 + (sRatio * 0.002)) : 0.9995;
-    car.forwardSpeed *= baseDamping;
+    // 引擎阻力：Boost 時阻力更小，讓它能突破極限
+    const damping = isBoosting ? 0.996 : (keys['ArrowUp'] ? (0.993 + (sRatio * 0.002)) : 0.99);
+    car.forwardSpeed *= damping;
 
-    // 防止倒車或負向速度
     if (car.forwardSpeed < 0) car.forwardSpeed = 0;
 
+    // 轉向與甩尾處理
     if (!isDriftMode) {
-        const turnLoss = Math.abs(steering) * 0.08; 
-        car.forwardSpeed *= (1.0 - turnLoss);
-        car.sideSpeed = (car.sideSpeed || 0) * 0.8; 
-        car.driftAngle = 0;
-        car.angle += steering * 0.08;
-        car.speed = car.forwardSpeed;
+      const turnLoss = Math.abs(steering) * 0.1; 
+      car.forwardSpeed *= (1.0 - turnLoss);
+      car.sideSpeed = (car.sideSpeed || 0) * 0.8; 
+      car.driftAngle = 0;
+      car.angle += steering * 0.08;
+      car.speed = car.forwardSpeed;
     } else {
-        // 你的甩尾設定...
-        car.sideSpeed = (car.sideSpeed || 0) - (car.forwardSpeed * steering * 4.5);
-        car.sideSpeed *= 0.92;
-        car.forwardSpeed *= 0.982; 
-        car.driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
-        car.speed = Math.hypot(car.forwardSpeed, car.sideSpeed);
-        car.angle += steering * 0.04;
+      car.sideSpeed = (car.sideSpeed || 0) - (car.forwardSpeed * steering * 4.5);
+      car.sideSpeed *= 0.94;
+      car.forwardSpeed *= 0.985; 
+      car.driftAngle = Math.atan2(car.sideSpeed, car.forwardSpeed);
+      car.speed = Math.hypot(car.forwardSpeed, car.sideSpeed);
+      car.angle += steering * 0.04;
     }
-}
+    car.maxSpeedLimit = maxS;
+  }
 
-  // 坐標更新
   const actualAngle = car.angle + (car.driftAngle || 0);
   car.x += Math.cos(actualAngle) * car.speed * MOVE_SCALE;
   car.y += Math.sin(actualAngle) * car.speed * MOVE_SCALE;
@@ -703,73 +711,57 @@ function followWaypoints(car) {
 
   // --- 1. 目標導航計算 ---
   const baseTarget = wp[car.waypointIndex];
-  let tx = baseTarget.x * SCALE;
-  let ty = baseTarget.y * SCALE;
+  let tx = baseTarget.x * SCALE, ty = baseTarget.y * SCALE;
   const nextIndex = (car.waypointIndex + 1) % wp.length;
-  const nx = wp[nextIndex].x * SCALE;
-  const ny = wp[nextIndex].y * SCALE;
-  
-  const segDX = nx - tx;
-  const segDY = ny - ty;
+  const nx = wp[nextIndex].x * SCALE, ny = wp[nextIndex].y * SCALE;
+  const segDX = nx - tx, segDY = ny - ty;
   const segLen = Math.hypot(segDX, segDY) || 1;
-  const dirX = segDX / segLen;
-  const dirY = segDY / segLen;
-  const nX = -dirY; // 法向量
-  const nY = dirX;
+  const dirX = segDX / segLen, dirY = segDY / segLen;
+  const nX = -dirY, nY = dirX;
 
-  // --- 2. 強化版避車與防止疊車 (Repulsion) 邏輯 ---
-  let sideRepulsion = 0; 
+  // --- 2. 強化防疊車與避讓 ---
+  let sideRepulsion = 0;
   let frontCar = null;
   let minDist = Infinity;
-  
-  // 檢查所有車輛（包含玩家）來決定偏移
   const candidates = [...allCars, player].filter(c => c !== car);
+  
   candidates.forEach(other => {
-    const dx = other.x - car.x;
-    const dy = other.y - car.y;
+    const dx = other.x - car.x, dy = other.y - car.y;
     const dist = Math.hypot(dx, dy);
-    
-    // 判定前方車輛
     const relForward = dx * dirX + dy * dirY;
-    if (relForward > 0 && dist < 450 && dist < minDist) {
-      minDist = dist;
-      frontCar = other;
-    }
+    const relLateral = dx * nX + dy * nY;
 
-    // 防止疊車：如果兩車太近，產生側向排斥力
-    if (dist < 130) {
-      const relLateral = dx * nX + dy * nY;
-      // 往對方相反的方向推開，dist 越近力道越大
-      sideRepulsion -= Math.sign(relLateral) * (200 / (dist + 1));
+    if (relForward > 0 && relForward < 600 && Math.abs(relLateral) < 140) {
+      if (dist < minDist) { minDist = dist; frontCar = other; }
+    }
+    // 側向強力相斥：解決疊車
+    if (dist < 180) {
+      const force = (1000 / (dist + 20)); // 增強排斥力
+      sideRepulsion -= Math.sign(relLateral || (Math.random()-0.5)) * force;
     }
   });
 
+  if (car.overtakeTimer > 0) car.overtakeTimer--;
   const inOvertake = car.overtakeTimer > 0 && car.overtakeSide !== 0;
-  let targetOffset = car.laneOffset || 0;
-  
-  // 優先執行超車偏移，否則執行排斥偏移
-  if (inOvertake) {
-    targetOffset += car.overtakeSide * 420;
-  } else {
-    targetOffset += sideRepulsion; 
+  if (!inOvertake && frontCar && minDist < 400) {
+    car.overtakeTimer = 100;
+    car.overtakeSide = ((frontCar.x - car.x) * nX + (frontCar.y - car.y) * nY) > 0 ? -1 : 1;
   }
+
+  let targetOffset = (car.laneOffset || 0) + sideRepulsion;
+  if (inOvertake) targetOffset += car.overtakeSide * 500;
+  targetOffset = Math.max(-1200, Math.min(1200, targetOffset));
 
   if (car.currentOffset == null) car.currentOffset = targetOffset;
-  car.currentOffset += (targetOffset - car.currentOffset) * 0.1;
+  car.currentOffset += (targetOffset - car.currentOffset) * 0.15;
 
-  const targetX = tx + nX * car.currentOffset;
-  const targetY = ty + nY * car.currentOffset;
-  const finalDX = targetX - car.x;
-  const finalDY = targetY - car.y;
+  const targetX = tx + nX * car.currentOffset, targetY = ty + nY * car.currentOffset;
+  const finalDX = targetX - car.x, finalDY = targetY - car.y;
+  if (Math.hypot(finalDX, finalDY) < 500) car.waypointIndex = (car.waypointIndex + 1) % wp.length;
 
-  if (Math.hypot(finalDX, finalDY) < 500) {
-    car.waypointIndex = (car.waypointIndex + 1) % wp.length;
-  }
-
-  // --- 3. 轉向與極致四次方加速曲線 ---
+  // --- 3. 核心：極致科學加速模型 (起步猛、後段極慢) ---
   const targetAngle = Math.atan2(finalDY, finalDX);
-  let angleDiff = Math.atan2(Math.sin(targetAngle - car.angle), Math.cos(targetAngle - car.angle));
-  const steeringAngle = angleDiff * 0.35;
+  const steeringAngle = Math.atan2(Math.sin(targetAngle - car.angle), Math.cos(targetAngle - car.angle)) * 0.35;
 
   const speedFactor = car.speedFactor || 1.0;
   const maxSpeed = inOvertake ? (26.7 * speedFactor + 1.2) : (26.7 * speedFactor);
@@ -778,27 +770,26 @@ function followWaypoints(car) {
   const currentSpeed = Math.abs(car.forwardSpeed || 0);
   const sRatio = Math.min(1.0, currentSpeed / maxSpeed);
 
-  // 【科學加速修正】使用五次方曲線，讓加速時間大幅拉長
-  // 起步動力僅給 0.015 保底，讓它像重型賽車緩慢起步
-  const baseAccel = 0.85; 
-  const powerRamp = Math.pow(sRatio, 7.5) + 0.08; 
-  let acceleration = car.spec.acceleration * baseAccel * SPEED_UNIT_SCALE * powerRamp * (1.0 - sRatio);
+  /**
+   * 雙段式動力：
+   * 1. 基礎倍率 baseAccel 設低 (0.4)，防止瞬間噴射。
+   * 2. 使用反向 S 曲線：1.0 - Math.pow(sRatio, 0.4)。
+   * 次方數越小（如 0.4），動力衰減就越早、越快發生。
+   */
+  const baseAccel = 0.29; 
+  const powerCurve = Math.pow(1.0 - sRatio, 0.8); // 這會讓動力在 10km/h 後就開始大幅感應到阻力
+  
+  let acceleration = car.spec.acceleration * baseAccel * SPEED_UNIT_SCALE * powerCurve;
 
-  // 彎道明顯掉速
-  const turnIntensity = Math.abs(steeringAngle);
-  if (turnIntensity > 0.0001) {
-    acceleration *= 0.20; 
-  }
-
+  // 彎道掉速補償
+  if (Math.abs(steeringAngle) > 0.01) acceleration *= 0.25;
   if (currentSpeed >= maxSpeed) acceleration = 0;
 
   car.lastAISteering = steeringAngle;
-  
-  // 4. 更新物理與狀態
   updateCarPhysics(car, acceleration, steeringAngle);
 
-  // Aero 門檻：85% 速度才變形
-  car.isAeroMode = (currentSpeed > maxSpeed * 0.85) && (turnIntensity < 0.15);
+  // Aero 判定
+  car.isAeroMode = (currentSpeed > maxSpeed * 0.9) && (Math.abs(steeringAngle) < 0.05);
   switchCarImage(car, false);
   if (car.isAeroMode) emitAeroAirflow(car);
 }
@@ -1369,7 +1360,7 @@ function updateAeroMode(car, isPlayer) {
   const maxS = car.maxSpeedLimit || 26.7;
   
   // 嚴格門檻：玩家 80%, AI 90%
-  const ratio = isPlayer ? 0.80 : 0.90;
+  const ratio = isPlayer ? 0.90 : 0.90;
   const speedThreshold = maxS * ratio;
 
   // 判定是否正在大力轉彎
