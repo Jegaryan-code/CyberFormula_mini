@@ -25,7 +25,7 @@ const CARSPECS = [
   { image: "2. AOI/Al-Zard NP-1_Kaga.png", acceleration: 5.1, handling: 0.75 },  
   { image: "2. AOI/Al-Zard NP-2.png", acceleration: 5.25, handling: 0.75 },
   
-  { image: "2. AOI/EX-zard_ZA-11_kaga.png", acceleration: 5.3, handling: 0.8 },
+  { image: "2. AOI/EX-zard_ZA-11_Kaga.png", acceleration: 5.3, handling: 0.8 },
   { image: "2. AOI/EX-zard_ZA-11_Shiba.png", acceleration: 5.3, handling: 0.8 },
   { image: "2. AOI/EX-zard_ZA-11_B.png", acceleration: 5.3, handling: 0.8 },
   
@@ -53,6 +53,7 @@ const CARSPECS = [
   { image: "6. OTHERS SINGLE RACER/Stampede_RS.png", acceleration: 4.7, handling: 0.7 },
   { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.3, handling: 0.8 }
 ];
+
 
 
 
