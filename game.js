@@ -954,7 +954,7 @@ Object.keys(teams).sort().forEach(teamName =>  {
 
     carName.textContent = baseName;
 
-    carName.style.fontSize = '12px';
+    carName.style.fontSize = '28px';
 
     carName.style.margin = '5px 0 0';
 
@@ -1151,7 +1151,7 @@ function emitAeroAirflow(car) {
   for (let j = 0; j < jets.length; j++) {
     const side = jets[j];
     const rearOffset = CARHEIGHT * 0.45;
-    const sideOffset = side * (CARWIDTH * 0.55);
+    const sideOffset = side * (CARWIDTH * 0.4);
     
     const baseX = car.x + Math.cos(car.angle + Math.PI) * rearOffset +
                   Math.cos(car.angle + Math.PI / 2) * sideOffset;
