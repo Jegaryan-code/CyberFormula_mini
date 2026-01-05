@@ -2409,60 +2409,53 @@ ctx.translate(W / 2, H / 2);
 
 ctx.rotate(player.angle + Math.PI / 2);
 
-if (typeof isBoosting !== 'undefined' && isBoosting)  {
-
-  const podW = 12;
-
-  const podH = 35;
-
+if (typeof isBoosting !== 'undefined' && isBoosting) {
+  const podOffset = 2;  // 從車邊內縮 2px，避免突出車外
+  const podW = 8;       // 噴射器寬度變窄（原 12 → 8）
+  const podH = 35;      // 高度不變
   const carW = CARWIDTH;
-
   const carH = CARHEIGHT;
 
+  // 計算左右噴射器位置（完全在車身內）
+  const leftPodX = -carW / 2 + podOffset;
+  const rightPodX = carW / 2 - podW - podOffset;
+  const leftPodCenter = leftPodX + podW / 2;
+  const rightPodCenter = rightPodX + podW / 2;
+
+  // 畫深灰色噴射器外殼（現在完全貼車邊內側，不突出）
   ctx.fillStyle = '#333';
+  ctx.fillRect(leftPodX, carH / 2 - 40, podW, podH);
+  ctx.fillRect(rightPodX, carH / 2 - 40, podW, podH);
 
-  ctx.fillRect(-carW / 2 - podW + 5, carH / 2 - 40, podW, podH);
-
-  ctx.fillRect(carW / 2 - 5, carH / 2 - 40, podW, podH);
-
+  // 火焰高度（隨機閃爍）
   const flameHeight = 40 + Math.random() * 20;
 
+  // 漸層：青藍色火焰漸變透明
   const gradient = ctx.createLinearGradient(0, carH / 2, 0, carH / 2 + flameHeight);
-
   gradient.addColorStop(0, '#00ffff');
-
   gradient.addColorStop(0.5, 'rgba(0, 150, 255, 0.8)');
-
   gradient.addColorStop(1, 'transparent');
-
   ctx.fillStyle = gradient;
 
+  // 左火焰：從噴射器中心開始，向下張開（寬度變窄，spread 從 ~6 → 4）
+  const flameSpread = 4;
   ctx.beginPath();
-
-  ctx.moveTo(-carW / 2 - 2, carH / 2 - 5);
-
-  ctx.lineTo(-carW / 2 - 8, carH / 2 + flameHeight);
-
-  ctx.lineTo(-carW / 2 + 4, carH / 2 + flameHeight);
-
+  ctx.moveTo(leftPodCenter, carH / 2 - 5);
+  ctx.lineTo(leftPodCenter - flameSpread, carH / 2 + flameHeight);
+  ctx.lineTo(leftPodCenter + flameSpread, carH / 2 + flameHeight);
   ctx.fill();
 
+  // 右火焰：完全對稱
   ctx.beginPath();
-
-  ctx.moveTo(carW / 2 + 2, carH / 2 - 5);
-
-  ctx.lineTo(carW / 2 + 8, carH / 2 + flameHeight);
-
-  ctx.lineTo(carW / 2 - 4, carH / 2 + flameHeight);
-
+  ctx.moveTo(rightPodCenter, carH / 2 - 5);
+  ctx.lineTo(rightPodCenter + flameSpread, carH / 2 + flameHeight);
+  ctx.lineTo(rightPodCenter - flameSpread, carH / 2 + flameHeight);
   ctx.fill();
 
+  // 白色高溫核心（噴射口，位置調整到中心）
   ctx.fillStyle = 'white';
-
-  ctx.fillRect(-carW / 2 - 3, carH / 2 - 5, 4, 10);
-
-  ctx.fillRect(carW / 2 - 1, carH / 2 - 5, 4, 10);
-
+  ctx.fillRect(leftPodCenter - 2, carH / 2 - 5, 4, 10);
+  ctx.fillRect(rightPodCenter - 2, carH / 2 - 5, 4, 10);
 }
 
 if (player.img && player.img.complete && player.img.naturalWidth > 0) {
