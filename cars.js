@@ -44,8 +44,9 @@ const CARSPECS = [
   { image: "4. STORMZENDER/SPIEGEL_HP-022_2.png", acceleration: 5.05, handling: 0.95 },  
   { image: "4. STORMZENDER/SPIEGEL_HP-022_B.png", acceleration: 5.0, handling: 0.95 }, 
   
-  { image: "5. MISSING LINK/MISSIONNEL_VR-4.png", acceleration: 4.6, handling: 0.7 },  
-  { image: "5. MISSING LINK/STRATMISSIONNEL_MS-3.png", acceleration: 4.7, handling: 0.8 },  
+  { image: "5. MISSING LINK/MISSIONNEL_VR-4.png", acceleration: 4.7, handling: 0.7 },  
+  { image: "5. MISSING LINK/STRATMISSIONNEL_MS-3.png", acceleration: 4.85, handling: 0.8 },
+  { image: "5. MISSING LINK/Asurada_GST.png", acceleration: 4.8, handling: 0.75 }, 
   
   { image: "6. OTHERS SINGLE RACER/Albatrander_602.png", acceleration: 4.6, handling: 0.7 },
   { image: "6. OTHERS SINGLE RACER/EL-CONDOL_B-15.png", acceleration: 4.5, handling: 0.7 },
@@ -53,6 +54,7 @@ const CARSPECS = [
   { image: "6. OTHERS SINGLE RACER/Stampede_RS.png", acceleration: 4.7, handling: 0.7 },
   { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.3, handling: 0.8 }
 ];
+
 
 
 
