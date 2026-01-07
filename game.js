@@ -3343,48 +3343,75 @@ pitBtn.addEventListener('mousedown', handlePitPress);
 }
 
 window.addEventListener('keydown', e => {
-  if (e.code === 'Space') {
-    e.preventDefault();
-    if (boostMeter > 0 && boostCooldown <= 0) isBoosting = true;
-    return;
-  }
-
-	if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
-			e.preventDefault();
-			
-			// 檢查 keys[e.key] 是否正確阻擋了重複觸發
-			if (!keys[e.key]) {
-				const now = Date.now();
-				const interval = now - lastTapTime[e.key];
-				
-				console.log(`按下了 ${e.key}, 間隔時間: ${interval}ms`); // F12 看到這個代表偵測有在跑
-
-				if (interval < DOUBLE_TAP_DELAY && interval > 30) {
-					isDriftMode = true;
-					console.log("%c >>> 甩尾模式啟動成功 <<< ", "color: yellow; background: red; font-weight: bold;");
-				}
-				lastTapTime[e.key] = now;
-			}
-			keys[e.key] = true;
-		}
-  else if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
-    e.preventDefault();
-    keys[e.key] = true;
-  }
-  else if (e.key.toLowerCase() === 'p') {
-    if (gameState === 'racing' && !playerAutoDriving && !inPit) wantsToPit = true;
-  }
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+        // 鍵盤甩尾判定
+        if (!keys[e.key] && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            const now = Date.now();
+            if (now - lastTapTime[e.key] < 300 && now - lastTapTime[e.key] > 30) {
+                isDriftMode = true;
+            }
+            lastTapTime[e.key] = now;
+        }
+        keys[e.key] = true;
+    }
+    if (e.code === 'Space') {
+        e.preventDefault();
+        if (boostMeter > 0 && boostCooldown <= 0) isBoosting = true;
+    }
 });
 
 window.addEventListener('keyup', e => {
-  if (e.code === 'Space') isBoosting = false;
-
-  if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
-    isDriftMode = false; // 放開方向鍵，甩尾狀態立即結束
-  }
-
-  if (e.key in keys) keys[e.key] = false;
+	
+	if (e.code === 'Space') isBoosting = false;
+	
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        keys[e.key] = false;
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') isDriftMode = false;
+    }
 });
+
+
+const upBtn = document.getElementById('btnUp');
+const downBtn = document.getElementById('btnDown');
+const leftBtn = document.getElementById('btnLeft');
+const rightBtn = document.getElementById('btnRight');
+const boostBtn = document.getElementById('boostBtn');
+
+if (upBtn) {
+    upBtn.addEventListener('touchstart', (e) => { e.preventDefault(); keys['ArrowUp'] = true; }, {passive: false});
+    upBtn.addEventListener('touchend', (e) => { e.preventDefault(); keys['ArrowUp'] = false; });
+}
+if (downBtn) {
+    downBtn.addEventListener('touchstart', (e) => { e.preventDefault(); keys['ArrowDown'] = true; }, {passive: false});
+    downBtn.addEventListener('touchend', (e) => { e.preventDefault(); keys['ArrowDown'] = false; });
+}
+if (leftBtn) {
+    leftBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const now = Date.now();
+        if (now - lastTapTime['ArrowLeft'] < 300) isDriftMode = true;
+        lastTapTime['ArrowLeft'] = now;
+        keys['ArrowLeft'] = true;
+    }, {passive: false});
+    leftBtn.addEventListener('touchend', (e) => { e.preventDefault(); keys['ArrowLeft'] = false; isDriftMode = false; });
+}
+if (rightBtn) {
+    rightBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const now = Date.now();
+        if (now - lastTapTime['ArrowRight'] < 300) isDriftMode = true;
+        lastTapTime['ArrowRight'] = now;
+        keys['ArrowRight'] = true;
+    }, {passive: false});
+    rightBtn.addEventListener('touchend', (e) => { e.preventDefault(); keys['ArrowRight'] = false; isDriftMode = false; });
+}
+if (boostBtn) {
+    boostBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (boostMeter > 0 && boostCooldown <= 0) isBoosting = true;
+    }, {passive: false});
+}
 
 loadTrack(0);
 
