@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () =>  {
 
   const SCALE = 5.0;
 
-  const WORLD_SPEED_SCALE = 0.5;
+  const WORLD_SPEED_SCALE = 0.8;
 
   const SPEED_UNIT_SCALE = 36 / 17;
 
