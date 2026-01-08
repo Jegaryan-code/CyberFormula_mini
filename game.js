@@ -997,6 +997,8 @@ container.appendChild(ul);
 }
 
 function startRace()  {
+	
+  playerCarImg.onload = null;	
 
   if (countdownInterval)  {
 
@@ -1378,29 +1380,46 @@ function updateAeroMode(car, isPlayer) {
 
 // 4. 動態切換車輛圖片
 function switchCarImage(car, isPlayerBoosting = false) {
-  if (!car.spec?.image || car.spec.image === 'null') return;
+  if (!car.spec || !car.spec.image || car.spec.image === 'null') return;
   
-  let targetSrc = car.spec.image;
+  const spec = car.spec;
+  const originalPath = spec.image;
+  const basePath = originalPath.replace(/\.png$/i, '');
   
-  // 優先級 1：Player Boost
-  if (isPlayerBoosting) {
-    const boostPath = getBoostImagePath(car.spec.image);
-    if (boostPath) {
-      targetSrc = boostPath;
-    } else {
-      const aeroPath = getAeroImagePath(car.spec.image);
-      if (aeroPath) targetSrc = aeroPath;
-    }
+  let targetSuffix = ".png";
+
+  // --- 重新編排的邏輯 ---
+
+  // 1. 如果正在 Boost (不論有沒有 Aero)，優先使用 _Boost
+  // 這樣能解決你說的那台特殊賽車在 Boost 時要看 _Boost 的問題
+  if (spec.hasBoost && isPlayerBoosting) {
+    targetSuffix = "_Boost.png";
+  } 
+  // 2. 如果沒有在 Boost，但車輛有 Aero 且處於變形模式
+  else if (spec.hasAero && car.isAeroMode) {
+    targetSuffix = "_ABoost.png";
   }
-  // 優先級 2：Aero Mode（用車的獨立狀態）
-  else if (car.isAeroMode) {
-    const aeroPath = getAeroImagePath(car.spec.image);
-    if (aeroPath) targetSrc = aeroPath;
-  }
-  
-  if (car.img?.src !== targetSrc) {
+
+  /* 註解說明：
+     - 一般只有 Aero 的車：會走第 2 條路，顯示 _ABoost。
+     - 一般只有 Boost 的車：會走第 1 條路，顯示 _Boost。
+     - 你說的那台特殊車：
+       - Boost 時：走第 1 條路，顯示 _Boost (符合你要求)。
+       - 非 Boost 但 Aero 時：走第 2 條路，顯示 _ABoost。
+  */
+
+  // --- 執行切換 (防 404 及重複載入版本) ---
+  const targetSrc = basePath + targetSuffix;
+
+  if (!car.img) {
     car.img = new Image();
     car.img.src = targetSrc;
+  } else {
+    // 解碼路徑避免空格/ %20 導致的誤判
+    const currentSrcDecoded = decodeURIComponent(car.img.src);
+    if (!currentSrcDecoded.endsWith(targetSrc)) {
+      car.img.src = targetSrc;
+    }
   }
 }
 
@@ -2462,10 +2481,7 @@ if (player.img && player.img.complete && player.img.naturalWidth > 0) {
   let shakeX = isBoosting ? (Math.random() - 0.5) * 2 : 0;
   let shakeY = isBoosting ? (Math.random() - 0.5) * 2 : 0;
   ctx.drawImage(player.img, -CARWIDTH / 2 + shakeX, -CARHEIGHT / 2 + shakeY, CARWIDTH, CARHEIGHT);
-} else {
-  // 圖片載入失敗時用備用圖或跳過
-  console.warn('Player image not ready:', player.img?.src);
-}
+} 
 
 ctx.restore();
 
