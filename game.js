@@ -1380,47 +1380,61 @@ function updateAeroMode(car, isPlayer) {
 
 // 4. 動態切換車輛圖片
 function switchCarImage(car, isPlayerBoosting = false) {
-  if (!car.spec || !car.spec.image || car.spec.image === 'null') return;
-  
-  const spec = car.spec;
-  const originalPath = spec.image;
-  const basePath = originalPath.replace(/\.png$/i, '');
-  
-  let targetSuffix = ".png";
+    if (!car.spec || !car.spec.image || car.spec.image === 'null') return;
 
-  // --- 重新編排的邏輯 ---
+    const spec = car.spec;
+    const originalPath = spec.image;
+    const basePath = originalPath.replace(/\.png$/i, '');
+    
+    // 檢查這是否為 Ogre 或其他同時擁有兩種變形圖的特殊車輛
+    // 判斷條件：路徑包含 "OGRE"
+    const isSpecialCar = originalPath.toUpperCase().includes("OGRE");
 
-  // 1. 如果正在 Boost (不論有沒有 Aero)，優先使用 _Boost
-  // 這樣能解決你說的那台特殊賽車在 Boost 時要看 _Boost 的問題
-  if (spec.hasBoost && isPlayerBoosting) {
-    targetSuffix = "_Boost.png";
-  } 
-  // 2. 如果沒有在 Boost，但車輛有 Aero 且處於變形模式
-  else if (spec.hasAero && car.isAeroMode) {
-    targetSuffix = "_ABoost.png";
-  }
+    let targetSuffix = ".png";
 
-  /* 註解說明：
-     - 一般只有 Aero 的車：會走第 2 條路，顯示 _ABoost。
-     - 一般只有 Boost 的車：會走第 1 條路，顯示 _Boost。
-     - 你說的那台特殊車：
-       - Boost 時：走第 1 條路，顯示 _Boost (符合你要求)。
-       - 非 Boost 但 Aero 時：走第 2 條路，顯示 _ABoost。
-  */
+    // --- 核心邏輯切換 ---
 
-  // --- 執行切換 (防 404 及重複載入版本) ---
-  const targetSrc = basePath + targetSuffix;
-
-  if (!car.img) {
-    car.img = new Image();
-    car.img.src = targetSrc;
-  } else {
-    // 解碼路徑避免空格/ %20 導致的誤判
-    const currentSrcDecoded = decodeURIComponent(car.img.src);
-    if (!currentSrcDecoded.endsWith(targetSrc)) {
-      car.img.src = targetSrc;
+    if (isPlayerBoosting && spec.hasBoost) {
+        // 如果是 Ogre 或是沒有 Aero 的車，Boost 時使用 _Boost.png
+        // 如果是普通有 Aero 的車，Boost 時使用 _ABoost.png
+        if (isSpecialCar || !spec.hasAero) {
+            targetSuffix = "_Boost.png";
+        } else {
+            targetSuffix = "_ABoost.png";
+        }
+    } 
+    else if (car.isAeroMode && spec.hasAero) {
+        // 單純 Aero 變形（沒開 Boost）時，使用 _ABoost.png
+        targetSuffix = "_ABoost.png";
     }
-  }
+
+    const targetSrc = basePath + targetSuffix;
+
+    // --- 執行更換圖片 ---
+    if (!car.img) {
+        car.img = new Image();
+        car.img.src = targetSrc;
+    } else {
+        const currentSrcDecoded = decodeURIComponent(car.img.src);
+        if (!currentSrcDecoded.endsWith(targetSrc)) {
+            
+            // 為了防止 404，我們做一個簡單的載入測試
+            let tempImg = new Image();
+            tempImg.src = targetSrc;
+            
+            tempImg.onload = () => {
+                car.img.src = targetSrc;
+            };
+            
+            tempImg.onerror = () => {
+                // 如果 _Boost 或 _ABoost 載入失敗，退回原圖，避免黑畫面
+                if (targetSuffix !== ".png") {
+                    console.warn("Image not found, fallback to original:", targetSrc);
+                    car.img.src = originalPath;
+                }
+            };
+        }
+    }
 }
 
 
