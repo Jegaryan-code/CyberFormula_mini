@@ -1466,7 +1466,7 @@ function emitBoostForCar(car, isPlayer)  {
 
     const sideOffset = side * (CARWIDTH * 0.22);
 
-    const length = 85 + Math.random() * 35;
+    const length = 35 + Math.random() * 9;
 
     const width = 10 + Math.random() * 6;
 
@@ -2450,7 +2450,7 @@ ctx.translate(W / 2, H / 2);
 ctx.rotate(player.angle + Math.PI / 2);
 
 if (typeof isBoosting !== 'undefined' && isBoosting) {
-  const podOffset = 2;  // 從車邊內縮 2px，避免突出車外
+  const podOffset = 18;  // 從車邊內縮 2px，避免突出車外
   const podW = 8;       // 噴射器寬度變窄（原 12 → 8）
   const podH = 35;      // 高度不變
   const carW = CARWIDTH;
@@ -2478,7 +2478,7 @@ if (typeof isBoosting !== 'undefined' && isBoosting) {
   ctx.fillStyle = gradient;
 
   // 左火焰：從噴射器中心開始，向下張開（寬度變窄，spread 從 ~6 → 4）
-  const flameSpread = 2;
+  const flameSpread = 4;
   ctx.beginPath();
   ctx.moveTo(leftPodCenter, carH / 2 - 5);
   ctx.lineTo(leftPodCenter - flameSpread, carH / 2 + flameHeight);
