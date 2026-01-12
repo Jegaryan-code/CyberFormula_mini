@@ -3190,7 +3190,8 @@ if (gameState === 'racing') {
   else if (isBoosting) aiMsg = "BOOST ON! PRESSURE CRITICAL!";
   else if (tireHealth.some(h => h < 30)) aiMsg = "CAUTION: TIRE GRIP IS DOWN.";
   else if (wantsToPit) aiMsg = "PIT-IN STRATEGY CONFIRMED.";
-  
+  else if (liftingTurnActive) aiMsg = "CAUTION! Lifting Turn Active!!!";
+	  
   // 🔥 Aero Mode 通知（最低優先級，只在其他條件都不符合時顯示）
   else if (modeNotifyTimer > 0) {
     aiMsg = `Mode change: ${currentMode} Mode`;
