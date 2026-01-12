@@ -119,6 +119,9 @@ let modeNotifyTimer = 0;
 
 let modeNotifyText = "";
 
+let liftingTurnBannerTimer = 0;           // 以 frame 計數
+const LIFTING_TURN_BANNER_DURATION = 90;  // 大約 1.5 秒 (若 60fps)
+
 let boostMeter = 1.0;
 
 const BOOST_DRAIN_RATE = 0.0015;
@@ -399,7 +402,7 @@ function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
     const rawName = spec && spec.image
         ? spec.image.split('/').pop().toLowerCase()
         : "";
-    if (!rawName.includes("asurada")) return;
+    if (!rawName.includes("n-asurada") || rawName.includes("vision-asurada")) return;
 
     const speed = Math.abs(player.forwardSpeed || player.speed || 0);
     const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
@@ -418,6 +421,8 @@ function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
 
     liftingTurnBaseSpeed = Math.abs(player.forwardSpeed || player.speed || 0);
     player.sideSpeed = player.sideSpeed || 0;
+	
+	liftingTurnBannerTimer = LIFTING_TURN_BANNER_DURATION;
 }
 
 
@@ -2011,6 +2016,37 @@ ctx.restore();
 
 }
 
+// --- Lifting Turn 中央大字 ---
+if (liftingTurnBannerTimer > 0) {
+    liftingTurnBannerTimer--;
+
+    // 計算 alpha 做少少淡出效果
+    const t = liftingTurnBannerTimer / LIFTING_TURN_BANNER_DURATION; // 0~1
+    const alpha = Math.min(1, t * 1.5); // 開頭快啲去到 1, 之後慢慢跌
+
+    const text = "LIFTING TURN!";
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // 外框陰影
+    ctx.font = 'bold 150px Rajdhani, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 先畫深色外框
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.strokeText(text, W / 2, H / 2);
+
+    // 再畫亮色字體
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.95)'; // 青色螢光感
+    ctx.fillText(text, W / 2, H / 2);
+
+    ctx.restore();
+}
+
+
 if (isBoosting)  {
 
   let grd = ctx.createRadialGradient(W/2, H/2, W/4, W/2, H/2, W/1.2);
@@ -3191,7 +3227,8 @@ if (gameState === 'racing') {
   else if (tireHealth.some(h => h < 30)) aiMsg = "CAUTION: TIRE GRIP IS DOWN.";
   else if (wantsToPit) aiMsg = "PIT-IN STRATEGY CONFIRMED.";
   else if (liftingTurnActive) aiMsg = "CAUTION! Lifting Turn Active!!!";
-	  
+  
+  
   // 🔥 Aero Mode 通知（最低優先級，只在其他條件都不符合時顯示）
   else if (modeNotifyTimer > 0) {
     aiMsg = `Mode change: ${currentMode} Mode`;
