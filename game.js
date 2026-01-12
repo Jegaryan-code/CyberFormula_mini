@@ -84,6 +84,17 @@ let lastTapTime = { ArrowLeft: 0, ArrowRight: 0 };
 let isDriftMode = false;
 const DOUBLE_TAP_DELAY = 350; // 稍微放寬判定時間，增加成功率
 
+// Lifting Turn 狀態
+let liftingTurnActive = false;
+let liftingTurnTimer = 0;
+let liftingTurnDirection = 0;   // -1 = 左轉, +1 = 右轉
+let liftingTurnBaseSpeed = 0;   // 觸發當刻的基準速度
+const LIFTING_TURN_DURATION = 0.8;
+const LIFTING_TURN_SPEED_MULT = 1.02;
+const LIFTING_TURN_MIN_SPEED_RATIO = 0.60; // 和上面保持一致
+
+
+
 
 
 function getCarMaxSpeed(car)  {
@@ -370,6 +381,45 @@ function updateCarPhysics(car, acceleration, steering) {
   car.x += Math.cos(actualAngle) * car.speed * MOVE_SCALE;
   car.y += Math.sin(actualAngle) * car.speed * MOVE_SCALE;
 }
+
+function isLiftingTurnCar() {
+    const spec = CARSPECS[selectedCar];
+    if (!spec || !spec.image) return false;
+    const rawName = spec.image.split('/').pop().toLowerCase();
+    return rawName.includes("n-asurada") || rawName.includes("vision-asurada");
+}
+
+function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
+    if (liftingTurnActive) return;
+    if (!player) return;
+    if (gameState !== 'racing') return;
+
+    // 只限 Asurada
+    const spec = CARSPECS[selectedCar];
+    const rawName = spec && spec.image
+        ? spec.image.split('/').pop().toLowerCase()
+        : "";
+    if (!rawName.includes("asurada")) return;
+
+    const speed = Math.abs(player.forwardSpeed || player.speed || 0);
+    const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
+    if (speed < needSpeed) return;
+
+    // 需要有明顯轉向
+    if (Math.abs(steer) < 0.08) return;
+
+    // 要求玩家按住 Space 才會觸發
+    if (!keys['Space']) return;
+
+    // 方向：根據 steer 正負
+    liftingTurnDirection = steer > 0 ? 1 : -1;
+    liftingTurnActive = true;
+    liftingTurnTimer = 0;
+
+    liftingTurnBaseSpeed = Math.abs(player.forwardSpeed || player.speed || 0);
+    player.sideSpeed = player.sideSpeed || 0;
+}
+
 
 function drawDashboard(speed)  {
 
@@ -2794,53 +2844,123 @@ const MAX_REVERSE_SPEED = 3.0;
 
 player.forwardSpeed = Math.max(-MAX_REVERSE_SPEED, Math.min(player.forwardSpeed, maxSpeedNow));
 
+// 一般轉向
 const speedForSteer = Math.abs(player.forwardSpeed);
-
 const steerDamp = 1 / (1 + speedForSteer * 0.06);
 
+// 原本：player.angle += steering * steerDamp * player.forwardSpeed / 8;
+// 改成：先做普通 steering，再疊加 Lifting Turn 額外旋轉
 player.angle += steering * steerDamp * player.forwardSpeed / 8;
 
-const sideFrictionFactor = 0.99;
+// --- Lifting Turn 額外效果 ---
+if (liftingTurnActive) {
+    liftingTurnTimer += deltaTime;
+    const t = Math.min(1, liftingTurnTimer / LIFTING_TURN_DURATION);
 
-const sideSpeedGeneration = 1.2;
+    // 0 → 1 → 0，中段最強
+    const ease = Math.sin(Math.PI * t);
+
+    const speedNow = Math.abs(player.forwardSpeed || player.speed || 0);
+    const maxSpeedNow = getCarMaxSpeed(player);
+    const speedRatio = Math.min(1, speedNow / maxSpeedNow);
+
+    // 每秒額外轉向速度（rad/s），1.4 左右大約 40 度
+    const baseTurnRate = 1.4; 
+    const extraTurn =
+        liftingTurnDirection *
+        baseTurnRate *
+        ease *
+        (0.7 + 0.3 * speedRatio) *
+        deltaTime;   // ★ 一定要乘 deltaTime
+
+    player.angle += extraTurn;
+
+    // 速度只保住，不再像 Boost 咁抽上去
+    const keepRatio = 0.97; // 最多跌 3%
+    const minKeepSpeed = liftingTurnBaseSpeed * keepRatio;
+    const maxAllowSpeed = liftingTurnBaseSpeed * LIFTING_TURN_SPEED_MULT;
+
+    const sign = Math.sign(player.forwardSpeed || 1);
+    if (speedNow < minKeepSpeed) {
+        const diff = minKeepSpeed - speedNow;
+        player.forwardSpeed += sign * diff * 0.25;
+    }
+    if (Math.abs(player.forwardSpeed) > maxAllowSpeed) {
+        player.forwardSpeed = sign * maxAllowSpeed;
+    }
+
+    if (liftingTurnTimer >= LIFTING_TURN_DURATION) {
+        liftingTurnActive = false;
+        liftingTurnTimer = 0;
+        liftingTurnDirection = 0;
+        liftingTurnBaseSpeed = 0;
+    }
+}
+
+
+
+
+// 根據是否 Lifting Turn 決定摩擦
+let sideFrictionFactor = liftingTurnActive ? 0.992 : 0.99;
+// Lifting Turn 中反而加大側向速度生成
+const sideSpeedGeneration = liftingTurnActive ? 2.0 : 1.2;
 
 player.sideSpeed = player.sideSpeed || 0;
-
-if (Math.abs(steering) > 0.01)  {
-
-  player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration;
-
+if (Math.abs(steering) > 0.01) {
+    player.sideSpeed -= player.forwardSpeed * steering * sideSpeedGeneration;
 }
 
-const maxSideSlip = Math.abs(player.forwardSpeed) * 0.7;
+// 允許更大 side slip，路線拋出多啲
+const sideSlipRatio = liftingTurnActive ? 1.7 : 0.7;
+const maxSideSlip = Math.abs(player.forwardSpeed) * sideSlipRatio;
 
 player.sideSpeed = Math.max(-maxSideSlip, Math.min(player.sideSpeed, maxSideSlip));
-
 player.sideSpeed *= sideFrictionFactor;
-
 player.forwardSpeed *= FORWARD_DAMPING_PLAYER;
 
+
 const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
-
 const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
-
 const actualAngle = player.angle + driftAngle;
 
-if (player && gameState === 'racing') {
-    // 取得目前的油門與轉向輸入
-    let acc = 0;
-    if (keys['ArrowUp']) acc = 0.4; // 這裡的數值參考你原本的加速邏輯
-    if (keys['ArrowDown']) acc = -0.1;
-    
-    let steer = 0;
-    if (keys['ArrowLeft']) steer = -0.1;
-    if (keys['ArrowRight']) steer = 0.1;
 
-    // 直接呼叫物理引擎
+if (player && gameState === 'racing') {
+    let acc = 0;
+    if (keys['ArrowUp'])  acc = 0.4;
+    if (keys['ArrowDown']) acc = -0.1;
+
+    let steer = 0;
+    if (keys['ArrowLeft'])  steer = -0.1;
+    if (keys['ArrowRight']) steer =  0.1;
+
+    const maxSpeedNow = getCarMaxSpeed(player);
+    const speed = Math.abs(player.forwardSpeed || player.speed || 0);
+    const steeringMag = Math.abs(steer);
+
+    if (keys['Space']) {
+        const isTurning = steeringMag >= 0.04; // 比之前 0.08 寬鬆少少
+
+        if (isTurning && isLiftingTurnCar()) {
+            // ▶ 只要「轉緊彎＋Space」就優先當作 Lifting Turn，用唔到就乜都唔做
+            const fastEnough = speed >= maxSpeedNow * 0.60; // 門檻由 0.75 降到 0.60
+            if (fastEnough && !liftingTurnActive) {
+                tryActivateLiftingTurn(player, steer, maxSpeedNow);
+            }
+            // 無論有冇達標，都唔開 Boost
+            isBoosting = false;
+        } else {
+            // 冇轉向或唔係指定車，就當正常 Boost
+            if (boostMeter > 0 && boostCooldown <= 0) {
+                isBoosting = true;
+            }
+        }
+    } else {
+        isBoosting = false;
+    }
+
     updateCarPhysics(player, acc, steer);
-    
-    // --- 務必刪除或註解掉原本這裡的 player.x += 和 player.y += ---
 }
+
 
 player.speed = totalSpeed;
 
@@ -2878,7 +2998,7 @@ const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R
 
 const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
 
-if (isDrifting)  {
+if (!liftingTurnActive && isDrifting)  {
 
   const TIRE_MARK_LIFE = 60;
 
@@ -3400,13 +3520,15 @@ window.addEventListener('keydown', e => {
     }
     if (e.code === 'Space') {
         e.preventDefault();
-        if (boostMeter > 0 && boostCooldown <= 0) isBoosting = true;
+        keys['Space'] = true;
     }
 });
 
 window.addEventListener('keyup', e => {
 	
-	if (e.code === 'Space') isBoosting = false;
+    if (e.code === 'Space') {
+        keys['Space'] = false;
+    }
 	
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         keys[e.key] = false;
@@ -3452,9 +3574,15 @@ if (rightBtn) {
 if (boostBtn) {
     boostBtn.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        if (boostMeter > 0 && boostCooldown <= 0) isBoosting = true;
+        keys['Space'] = true;   // 當作按下 Space
+    }, {passive: false});
+
+    boostBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys['Space'] = false;  // 放開 Space
     }, {passive: false});
 }
+
 
 loadTrack(0);
 
