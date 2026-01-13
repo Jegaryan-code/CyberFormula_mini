@@ -93,25 +93,14 @@ const LIFTING_TURN_DURATION = 0.8;
 const LIFTING_TURN_SPEED_MULT = 1.02;
 const LIFTING_TURN_MIN_SPEED_RATIO = 0.60; // 和上面保持一致
 
+let mirageTurnActive = false;
+let mirageTurnTimer = 0;
+let mirageBoostPower = 0;
 
-
-
-
-function getCarMaxSpeed(car)  {
-
-  if (!car.spec) return BASE_MAX_SPEED;
-
-  const minAccel = 4.5;
-
-  const maxAccel = 5.3;
-
-  const normalizedAccel = (car.spec.acceleration - minAccel) / (maxAccel - minAccel);
-
-  const speedBonus = normalizedAccel * MAX_SPEED_BONUS;
-
-  return BASE_MAX_SPEED + speedBonus;
-
-}
+const MIRAGE_TURN_DURATION = 1.5; // 持續約 0.5 秒
+let mirageBurstDone = false;   // 是否已經做過「一次性爆衝」
+let mirageBoostLock = 0;       // 防止立刻變回普通 Boost 的鎖（frame 計）
+let mirageAfterimageAccum = 0;
 
 let isBoosting = false;
 
@@ -121,6 +110,8 @@ let modeNotifyText = "";
 
 let liftingTurnBannerTimer = 0;           // 以 frame 計數
 const LIFTING_TURN_BANNER_DURATION = 90;  // 大約 1.5 秒 (若 60fps)
+let mirageTurnBannerTimer = 0;
+const MIRAGE_TURN_BANNER_DURATION = 90;
 
 let boostMeter = 1.0;
 
@@ -183,6 +174,21 @@ let aeroModeActive = false;
 let circuitModeActive = false;
 let currentMode = 'Circuit'; // 初始為 Circuit Mode
 
+function getCarMaxSpeed(car)  {
+
+  if (!car.spec) return BASE_MAX_SPEED;
+
+  const minAccel = 4.5;
+
+  const maxAccel = 5.3;
+
+  const normalizedAccel = (car.spec.acceleration - minAccel) / (maxAccel - minAccel);
+
+  const speedBonus = normalizedAccel * MAX_SPEED_BONUS;
+
+  return BASE_MAX_SPEED + speedBonus;
+
+}
 
 function createSandPattern()  {
 
@@ -377,6 +383,7 @@ function updateCarPhysics(car, acceleration, steering) {
       car.speed = Math.hypot(car.forwardSpeed, car.sideSpeed);
       car.angle += steering * 0.04;
     }
+
     car.maxSpeedLimit = maxS;
   }
 
@@ -424,6 +431,36 @@ function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
 	
 	liftingTurnBannerTimer = LIFTING_TURN_BANNER_DURATION;
 }
+
+function isMirageTurnCar() {
+    const spec = CARSPECS[selectedCar];
+    if (!spec || !spec.image) return false;
+    const name = spec.image.split('/').pop().toLowerCase();
+    // 視乎你 ogre 素材檔名，通常會包含 "ogre" 或 "an-21"
+    return name.includes("ogre") || name.includes("an-21");
+}
+
+
+function tryActivateMirageTurn(player, maxSpeedNow) {
+    if (!player || mirageTurnActive) return;
+
+    const speed = Math.abs(player.forwardSpeed || player.speed || 0);
+    const side  = Math.abs(player.sideSpeed || 0);
+
+    const driftFactor  = Math.min(1, side  / (maxSpeedNow * 0.6));
+    const speedFactor  = Math.min(1, speed / maxSpeedNow);
+
+    // 可以少少強化
+    mirageBoostPower = 5.0 * (0.3 + 0.7 * driftFactor * speedFactor);
+
+    mirageTurnActive = true;
+    mirageTurnTimer  = 0;
+    mirageBurstDone  = false;
+    mirageBoostLock  = 60;  // 約 1 秒內禁止普通 Boost
+	
+	mirageTurnBannerTimer = MIRAGE_TURN_BANNER_DURATION;
+}
+
 
 
 function drawDashboard(speed)  {
@@ -1234,6 +1271,17 @@ function emitAeroAirflow(car) {
   }
 }
 
+const carBaseImageCache = {};
+
+function getBaseCarImage(spec) {
+    if (!spec || !spec.image) return null;
+    if (!carBaseImageCache[spec.image]) {
+        const img = new Image();
+        img.src = spec.image;   // 例如 "2. AOI/Ogre.png"
+        carBaseImageCache[spec.image] = img;
+    }
+    return carBaseImageCache[spec.image];
+}
 
 // 在主要 loop 或 update 邏輯中，每幀檢查並切換圖片
 function updateCarImages() {
@@ -1626,6 +1674,27 @@ const handleKeyUp = (e) => {
   }
   if (e.key in keys) keys[e.key] = false;
 };
+
+function emitMirageAfterimage(car) {
+    const life = 28; // 比原本長少少
+    const baseImg = getBaseCarImage(car.spec); // 用「原本」車圖
+
+    boostParticles.push({
+        type: 'mirage',
+        x: car.x,
+        y: car.y,
+        // 注意：車實際畫圖時用 angle + Math.PI/2
+        angle: car.angle,
+        length: CARHEIGHT * 1.8,
+        width:  CARWIDTH  * 1.1,
+        life: life,
+        maxLife: life,
+        vx: 0,
+        vy: 0,
+        gravity: 0,
+        img: baseImg
+    });
+}
 
 
 
@@ -2041,6 +2110,32 @@ if (liftingTurnBannerTimer > 0) {
 
     // 再畫亮色字體
     ctx.fillStyle = 'rgba(0, 255, 255, 0.95)'; // 青色螢光感
+    ctx.fillText(text, W / 2, H / 2);
+
+    ctx.restore();
+}
+
+// --- Mirage Turn 中央大字 ---
+else if (mirageTurnBannerTimer > 0) {
+    mirageTurnBannerTimer--;
+    const t = mirageTurnBannerTimer / MIRAGE_TURN_BANNER_DURATION; // 0~1
+    const alpha = Math.min(1, t * 1.5);
+    const text = "MIRAGE TURN!!";
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    ctx.font = 'bold 150px Rajdhani, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 外框
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.strokeText(text, W / 2, H / 2);
+
+    // 內字：紫藍色螢光感
+    ctx.fillStyle = 'rgba(150, 120, 255, 0.98)';
     ctx.fillText(text, W / 2, H / 2);
 
     ctx.restore();
@@ -2509,23 +2604,59 @@ dustParticles = dustParticles.filter(p =>  {
 ctx.save();
 
 boostParticles.forEach(p => {
-  const alpha = p.life / p.maxLife;
-  const len = p.length;
-  const w   = p.width;
+    const alpha = p.life / p.maxLife;
 
-  ctx.save();
-  ctx.translate(p.x - offsetX, p.y - offsetY);
-  ctx.rotate(p.angle);
-  ctx.globalAlpha = alpha;
+    ctx.save();
+    ctx.translate(p.x - offsetX, p.y - offsetY);
+    ctx.rotate(p.angle);
 
-  ctx.strokeStyle = p.color;
-  ctx.lineWidth = w;
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(-len, 0);   // 向後拉出一條線
-  ctx.stroke();
+	if (p.type === 'mirage') {
+		const alpha = p.life / p.maxLife;
 
-  ctx.restore();
+		ctx.globalAlpha = alpha * 0.5;
+
+		// 用原本車圖做幽靈殘影
+		if (p.img && p.img.complete) {
+			// 跟車一樣：加上 Math.PI/2
+			ctx.rotate(p.angle + Math.PI / 2);
+
+			// 可以稍為縮細少少，免得太實
+			const scale = 0.95;
+			const drawW = CARWIDTH  * scale;
+			const drawH = CARHEIGHT * scale;
+
+			ctx.drawImage(
+				p.img,
+				-drawW / 2,
+				-drawH / 2,
+				drawW,
+				drawH
+			);
+		} else {
+			// 後備：如果圖未 load 完，就用之前個白色矩形
+			ctx.fillStyle = 'rgba(200, 255, 255, 0.8)';
+			ctx.fillRect(
+				-p.length,
+				-p.width / 2,
+				p.length,
+				p.width
+			);
+		}
+    } else {
+        // 原本 flame / airflow 那種光線
+        const len = p.length;
+        const w   = p.width;
+
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth   = w;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-len, 0);
+        ctx.stroke();
+    }
+
+    ctx.restore();
 });
 
 
@@ -2959,6 +3090,70 @@ const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
 const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
 const actualAngle = player.angle + driftAngle;
 
+// 在玩家 update 之後（updateCarPhysics 之後）
+if (mirageTurnActive && player) {
+    mirageTurnTimer += deltaTime;
+    const maxSpeedNow = getCarMaxSpeed(player);
+
+    // 判定「仲喺 drift」：側滑大或者 driftMode 開住
+    const stillDrifting =
+        isDriftMode || Math.abs(player.sideSpeed || 0) > 3.0;
+
+    // 1) 正在 drift 期間：慢慢收斂側滑，唔做大爆衝
+    if (stillDrifting) {
+        player.sideSpeed *= 0.90;   // 比平時收得快啲少少
+    }
+
+    // 2) 一旦由「drift 中」變成「唔 drift」而且未爆衝過 → one shot 向前 boost
+    if (!stillDrifting && !mirageBurstDone) {
+        const baseSpeed = Math.hypot(
+            player.forwardSpeed || 0,
+            player.sideSpeed   || 0
+        );
+
+        const sign = Math.sign(player.forwardSpeed || 1);
+
+        // 根據之前算嘅 mirageBoostPower + 目前總速度打一個脈衝
+        const burst = mirageBoostPower + baseSpeed * 0.6;
+
+        player.sideSpeed = 0;                    // 重置橫向
+        player.forwardSpeed += sign * burst;     // 一次過向前抽上去
+
+        // 上限，防止變火箭
+        const maxMirageSpeed = maxSpeedNow * 1.5;
+        if (Math.abs(player.forwardSpeed) > maxMirageSpeed) {
+            player.forwardSpeed = sign * maxMirageSpeed;
+        }
+
+        mirageBurstDone = true;
+    }
+
+    // 3) 整個 Mirage 時窗完結就收工
+    if (mirageTurnTimer >= MIRAGE_TURN_DURATION) {
+        mirageTurnActive = false;
+        mirageTurnTimer  = 0;
+        mirageBoostPower = 0;
+        mirageBurstDone  = false;
+    }
+
+    const SPAWN_INTERVAL = 0.05; // 約 0.05 秒一粒 ≈ 3 frame 一粒
+    mirageAfterimageAccum += deltaTime;
+    if (mirageAfterimageAccum >= SPAWN_INTERVAL) {
+        mirageAfterimageAccum -= SPAWN_INTERVAL;
+        emitMirageAfterimage(player);
+    }
+
+    if (mirageTurnTimer > MIRAGE_TURN_DURATION) {
+        mirageTurnActive = false;
+        mirageTurnTimer = 0;
+        mirageBoostPower = 0;
+        mirageBurstDone = false;
+        mirageAfterimageAccum = 0; // 結束時清零
+    }
+
+}
+
+
 
 if (player && gameState === 'racing') {
     let acc = 0;
@@ -2969,33 +3164,50 @@ if (player && gameState === 'racing') {
     if (keys['ArrowLeft'])  steer = -0.1;
     if (keys['ArrowRight']) steer =  0.1;
 
-    const maxSpeedNow = getCarMaxSpeed(player);
-    const speed = Math.abs(player.forwardSpeed || player.speed || 0);
-    const steeringMag = Math.abs(steer);
+    const maxSpeedNow  = getCarMaxSpeed(player);
+    const speed        = Math.abs(player.forwardSpeed || player.speed || 0);
+    const steeringMag  = Math.abs(steer);
+    const isTurning    = steeringMag >= 0.04;
+    const isDriftingNow =
+        isDriftMode || Math.abs(player.sideSpeed || 0) > 5.0;
+
+    if (mirageBoostLock > 0) mirageBoostLock--;  // 每 frame 減一
 
     if (keys['Space']) {
-        const isTurning = steeringMag >= 0.04; // 比之前 0.08 寬鬆少少
 
-        if (isTurning && isLiftingTurnCar()) {
-            // ▶ 只要「轉緊彎＋Space」就優先當作 Lifting Turn，用唔到就乜都唔做
-            const fastEnough = speed >= maxSpeedNow * 0.60; // 門檻由 0.75 降到 0.60
+        // 1) Asurada: Lifting Turn
+        if (isLiftingTurnCar() && isTurning) {
+            const fastEnough = speed >= maxSpeedNow * 0.60;
             if (fastEnough && !liftingTurnActive) {
                 tryActivateLiftingTurn(player, steer, maxSpeedNow);
             }
-            // 無論有冇達標，都唔開 Boost
             isBoosting = false;
-        } else {
-            // 冇轉向或唔係指定車，就當正常 Boost
+        }
+
+        // 2) Ogre: Mirage Turn (drift + Space)
+        else if (isMirageTurnCar() && isDriftingNow) {
+            const fastEnough = speed >= maxSpeedNow * 0.50;
+            if (fastEnough && !mirageTurnActive) {
+                tryActivateMirageTurn(player, maxSpeedNow);
+            }
+            isBoosting = false;   // Mirage Turn 一律唔 Boost
+        }
+
+        // 3) 其他情況：正常 Boost (只有在冇 Mirage 鎖時)
+        else if (!mirageTurnActive && mirageBoostLock <= 0) {
             if (boostMeter > 0 && boostCooldown <= 0) {
                 isBoosting = true;
             }
         }
     } else {
+        // 放開 Space 即關 Boost
         isBoosting = false;
     }
 
-    updateCarPhysics(player, acc, steer);
+    updateCarPhysics(player, acc, steer, deltaTime);
 }
+
+
 
 
 player.speed = totalSpeed;
