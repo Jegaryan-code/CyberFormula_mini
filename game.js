@@ -1563,15 +1563,15 @@ function emitBoostForCar(car, isPlayer)  {
 
     const speed = 5.5 + Math.random() * 4.5;
 
-    const life = 12 + Math.random() * 14;
+    const life = 4 + Math.random() * 6;
 
     const backOffset = 58 + Math.random() * 10;
 
     const sideOffset = side * (CARWIDTH * 0.22);
 
-    const length = 35 + Math.random() * 9;
+    const length = 2 + Math.random() * 9;
 
-    const width = 10 + Math.random() * 6;
+    const width = 8 + Math.random() * 3;
 
     boostParticles.push( {
 
@@ -1686,7 +1686,7 @@ function emitMirageAfterimage(car) {
         // 注意：車實際畫圖時用 angle + Math.PI/2
         angle: car.angle,
         length: CARHEIGHT * 1.8,
-        width:  CARWIDTH  * 1.1,
+        width:  CARWIDTH  * 0.8,
         life: life,
         maxLife: life,
         vx: 0,
