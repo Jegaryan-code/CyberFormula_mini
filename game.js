@@ -856,7 +856,13 @@ function followWaypoints(car) {
   const steeringAngle = Math.atan2(Math.sin(targetAngle - car.angle), Math.cos(targetAngle - car.angle)) * 0.35;
 
   const speedFactor = car.speedFactor || 1.0;
-  const maxSpeed = inOvertake ? (26.7 * speedFactor + 1.2) : (26.7 * speedFactor);
+  let maxSpeed = inOvertake ? (26.7 * speedFactor + 1.2) : (26.7 * speedFactor);
+  
+  // ★ 新增：AI Boost 時稍為提高最高速
+  if (car.isBoosting) {
+    maxSpeed *= 1.25;  // 例如 +25%，可以自己再 tune
+  }
+  
   car.maxSpeedLimit = maxSpeed;
 
   const currentSpeed = Math.abs(car.forwardSpeed || 0);
@@ -1128,8 +1134,7 @@ chosen.forEach((idx, i) =>  {
 
   const p = t.gridPositions[i];
 
-  allCars.push( {
-
+  allCars.push({
     isAI: true,
     x: (p.x * SCALE),
     y: (p.y * SCALE),
@@ -1145,12 +1150,15 @@ chosen.forEach((idx, i) =>  {
     laneOffset: (i % 2 === 0 ? -60 : 60),
     currentOffset: (i % 2 === 0 ? -60 : 60),
     speedFlameTimer: 0,
-    speedFactor: 0.95 + Math.random() * 0.12
-  }
-);
+    speedFactor: 0.95 + Math.random() * 0.12,
 
-}
-);
+    // 新增：AI Boost 狀態
+    isBoosting: false,
+    aiBoostTimer: 0,                 // 還有幾 frame 結束 boost
+    aiBoostCooldown: Math.floor(60 + Math.random() * 240) // 開局先等一陣，唔會一開始就亂放
+  });
+
+});
 
 }
 
@@ -1547,7 +1555,7 @@ function emitBoostForCar(car, isPlayer)  {
   if (isPlayer) {
     // Boost 時也用 switchCarImage 邏輯，保持一致
     switchCarImage(car, true);
-  }
+  } 
   
   const jets = [-1, 1];
 
@@ -2017,7 +2025,7 @@ if (typeof RENDER_PARKING_INDEX !== 'undefined' && RENDER_PARKING_INDEX >= 0)  {
 
   const by = wp.y * SCALE - player.y + H / 2;
 
-  const boxWidth = CARWIDTH * SCALE * 1.6;
+  const boxWidth = CARWIDTH * SCALE * 0.8;
 
   const boxHeight = CARHEIGHT * SCALE * 0.8;
 
@@ -2482,7 +2490,44 @@ car.lastTireMarkPosR =  {
 }
 ;
 
-if (car.speed > 0.6) emitMoveDustForCar(car);
+// 冷卻時間
+if (car.aiBoostCooldown > 0) car.aiBoostCooldown--;
+
+// 正在 Boost
+if (car.isBoosting) {
+    car.aiBoostTimer--;
+    if (car.aiBoostTimer <= 0) {
+        car.isBoosting = false;
+        car.aiBoostCooldown = 240;      // 冷卻 4 秒
+        switchCarImage(car, false);     // ★ 收 Boost 圖（還原／保持 Aero）
+    }
+} else {
+    // 準備判斷直路先開 Boost
+    if (car.aiBoostCooldown <= 0) {
+        const carMaxSpeed   = getCarMaxSpeed(car);
+        const currentSpeed  = Math.abs(car.forwardSpeed || car.speed || 0);
+        const speedRatio    = currentSpeed / carMaxSpeed;
+        const turningAmount = Math.abs(car.lastAISteering || 0); // 愈細愈直
+
+        if (speedRatio > 0.7 && turningAmount < 0.06) {
+            let triggerChance = 0.01;
+            let boostDuration = 150; // ★ 調長啲（見下一節）
+
+            if (speedRatio > 0.85 && turningAmount < 0.02) {
+                triggerChance = 0.3;
+                boostDuration = 420; // 大直路用更長
+            }
+
+            if (Math.random() < triggerChance) {
+                car.isBoosting   = true;
+                car.aiBoostTimer = boostDuration;
+                switchCarImage(car, true);  // ★ AI 開 Boost 時只喺呢刻切一次圖
+            }
+        }
+    }
+}
+
+
 
 const AI_SPEED_FLAME_FIXED = 27.5;
 
