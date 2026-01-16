@@ -188,9 +188,126 @@
         .track-card.selected { border: 4px solid #00ff41; background: #003300 !important; }
         .track-card img { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 10px; }
         
-        /* Car Select */
-        #carMenu .container { max-width: 1000px; width: 95%; padding: 20px 0; }
-        #carList { display: block; width: 100%; max-width: 1000px; margin: 30px auto; } /* 替換為 block 容器以便容納標題和列表 */
+		#carMenu .container {
+		  max-width: 1000px;
+		  width: 95%;
+		  margin: 0 auto;
+		  padding: 20px 0;
+		  display: flex;
+		  align-items: flex-start;
+		  gap: 20px;
+		}
+
+		#carList {
+		  flex: 3;
+		}
+
+		#carSpecPanel {
+		  flex: 2;
+		  background: rgba(0, 0, 0, 0.75);
+		  border-radius: 15px;
+		  padding: 16px 20px;
+		  border: 2px solid rgba(0, 255, 255, 0.4);
+		  box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+
+		  position: sticky;
+		  top: 120px;   /* 視乎你 FORMULA SELECT 標題高度微調 */
+		}
+
+		/* Spec 每一行 */
+		.spec-row {
+		  display: flex;
+		  align-items: center;
+		  margin-bottom: 10px;
+		  font-size: 20px;
+		}
+
+		/* 左邊文字 */
+		.spec-label {
+		  width: 80px;
+		  text-transform: uppercase;
+		  letter-spacing: 1px;
+		  color: #cccccc;
+		}
+
+		/* 中間 bar 背景：要有最小寬度，避免被擠到 0 */
+		.spec-bar-bg {
+		  flex: 1;
+		  min-width: 120px;          /* ★ 關鍵：至少 120px */
+		  height: 14px;
+		  background: #222;
+		  border-radius: 8px;
+		  margin: 0 8px;
+		  overflow: hidden;
+		  border: 1px solid rgba(255, 255, 255, 0.2);
+		}
+
+		/* 內層填充 bar */
+		.spec-bar-fill {
+		  height: 100%;
+		  width: 0%;
+		  background: linear-gradient(90deg, #00ff88, #00ccff);
+		  transition: width 0.2s ease-out;
+		}
+
+		/* 右側 “X/10” 數字 */
+		.spec-value {
+		  width: 55px;
+		  text-align: right;
+		  font-weight: bold;
+		}
+
+		/* 整個 Driver 區 */
+		#specDriverSection {
+		  margin-top: 18px;
+		  padding-top: 12px;
+		  border-top: 1px solid rgba(255, 255, 255, 0.15);
+
+		  display: flex;
+		  align-items: center;
+		  gap: 12px;
+		}
+
+		/* Avatar 圓框 */
+		#specDriverAvatarWrap {
+		  width: 180px;
+		  height: 180px;
+		  border-radius: 50%;
+		  overflow: hidden;
+		  border: 2px solid rgba(0, 255, 255, 0.6);
+		  box-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
+		  background: radial-gradient(circle at 30% 30%, #444, #111);
+		  flex-shrink: 0;
+		}
+
+		#specDriverAvatar {
+		  width: 100%;
+		  height: 100%;
+		  object-fit: cover;
+		}
+
+		/* 文字部份 */
+		#specDriverText {
+		  display: flex;
+		  flex-direction: column;
+		}
+
+		#specDriverLabel {
+		  font-size: 45px;
+		  letter-spacing: 2px;
+		  color: #aaaaaa;
+		}
+
+		#specDriverName {
+		  font-size: 40px;
+		  font-weight: 700;
+		  color: #ffffff;
+		  text-shadow: 0 0 8px rgba(0, 255, 255, 0.7);
+		  text-transform: uppercase;
+		}
+
+
+
         
         /* 新增：車隊標題樣式 */
         .team-header {
@@ -243,71 +360,71 @@
         
         /* Mobile Controls: 修正方向鍵位置和樣式 (恢復圓形、置於角落) */
 		#mobileControls {
-  position: fixed;
-  bottom: 0; 
-  left: 0;
-  width: 100%; 
-  display: flex;
-  justify-content: space-between;
-  padding: 20px;
-  z-index: 100;
-  pointer-events: none;
-}
+		  position: fixed;
+		  bottom: 0; 
+		  left: 0;
+		  width: 100%; 
+		  display: flex;
+		  justify-content: space-between;
+		  padding: 20px;
+		  z-index: 100;
+		  pointer-events: none;
+		}
 
-#moveVertical,
-#moveHorizontal {
-  display: flex;
-  gap: 20px;
-  pointer-events: auto;
-  align-items: center;
-}
+		#moveVertical,
+		#moveHorizontal {
+		  display: flex;
+		  gap: 20px;
+		  pointer-events: auto;
+		  align-items: center;
+		}
 
-#moveVertical {
-  flex-direction: column;
-}
+		#moveVertical {
+		  flex-direction: column;
+		}
 
-#moveHorizontal {
-  position: absolute;
-  right: 40px;
-  bottom: 20px;
-  flex-direction: row;
-}
+		#moveHorizontal {
+		  position: absolute;
+		  right: 40px;
+		  bottom: 20px;
+		  flex-direction: row;
+		}
 
-#mobileControls button {
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  font-size: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s;
-  padding: 0;
-  margin: 0;
-}
+		#mobileControls button {
+		  width: 140px;
+		  height: 140px;
+		  border-radius: 50%;
+		  border: 2px solid rgba(255, 255, 255, 0.3);
+		  background: rgba(0, 0, 0, 0.6);
+		  color: white;
+		  font-size: 24px;
+		  display: flex;
+		  align-items: center;
+		  justify-content: center;
+		  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+		  transition: all 0.2s;
+		  padding: 0;
+		  margin: 0;
+		}
 
-#mobileControls button:active {
-  transform: scale(0.9);
-  background: rgba(255, 255, 255, 0.8);
-  color: #000;
-}
+		#mobileControls button:active {
+		  transform: scale(0.9);
+		  background: rgba(255, 255, 255, 0.8);
+		  color: #000;
+		}
 
-#boostBtn {
-  background: linear-gradient(45deg, #0066ff, #00ccff) !important;
-  margin-right: 10px;
-  margin-left: 0;
-  font-weight: bold;
-  font-size: 16px;
-  padding: 5px;
-  white-space: nowrap;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-} 
+		#boostBtn {
+		  background: linear-gradient(45deg, #0066ff, #00ccff) !important;
+		  margin-right: 10px;
+		  margin-left: 0;
+		  font-weight: bold;
+		  font-size: 16px;
+		  padding: 5px;
+		  white-space: nowrap;
+		  width: 140px;
+		  height: 140px;
+		  border-radius: 50%;
+		} 
 		/* 新增 Minimap Canvas 樣式 */
 		#minimapCanvas {
 			position: absolute;
@@ -349,13 +466,58 @@
         <button class="btn" id="confirmTrackBtn">CONFIRM</button>
     </div>
     
-    <div id="carMenu" class="menu">
-        <h1>FORMULA SELECT</h1>
-        <div class="container">
-            <div id="carList"></div>
-        </div>
-        <button class="btn" id="confirmBtn">CONFIRM</button>
-    </div>
+	<div id="carMenu" class="menu">
+	  <h1>FORMULA SELECT</h1>
+	  <div class="container">
+		<div id="carList"></div>
+
+		<!-- ★ 新增：右側 Formula Spec Panel -->
+		<div id="carSpecPanel">
+		  <h2 id="specCarName">SELECT FORMULA</h2>
+
+		  <div class="spec-row">
+			<span class="spec-label">Speed</span>
+			<div class="spec-bar-bg">
+			  <div id="specSpeedBar" class="spec-bar-fill"></div>
+			</div>
+			<span id="specSpeedText" class="spec-value">-</span>
+		  </div>
+
+		  <div class="spec-row">
+			<span class="spec-label">Control</span>
+			<div class="spec-bar-bg">
+			  <div id="specControlBar" class="spec-bar-fill"></div>
+			</div>
+			<span id="specControlText" class="spec-value">-</span>
+		  </div>
+
+		  <div class="spec-row">
+			<span class="spec-label">Aero</span>
+			<span id="specAeroText" class="spec-plain-value">-</span>
+		  </div>
+
+		  <div class="spec-row">
+			<span class="spec-label">Turn</span>
+			<span id="specTurnText" class="spec-plain-value">-</span>
+		  </div>
+		  
+		  <div id="specDriverSection">
+			<div id="specDriverAvatarWrap">
+			  <img id="specDriverAvatar" src="" alt="Driver" />
+			</div>
+			<div id="specDriverText">
+			  <div id="specDriverLabel">DRIVER</div>
+			  <div id="specDriverName">-</div>
+			</div>		  
+		  
+		</div>
+	  </div>
+	</div>
+	
+	<button class="btn" id="confirmBtn">CONFIRM</button>
+	
+	</div>
+
     
     <div id="gameContainer">
         <canvas id="game" width="1000" height="1600"></canvas>

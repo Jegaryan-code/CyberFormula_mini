@@ -93,6 +93,7 @@ const LIFTING_TURN_DURATION = 0.8;
 const LIFTING_TURN_SPEED_MULT = 1.02;
 const LIFTING_TURN_MIN_SPEED_RATIO = 0.60; // 和上面保持一致
 
+let mirageTurnMode = "mirage"; // "mirage" | "special"
 let mirageTurnActive = false;
 let mirageTurnTimer = 0;
 let mirageBoostPower = 0;
@@ -392,6 +393,36 @@ function updateCarPhysics(car, acceleration, steering) {
   car.y += Math.sin(actualAngle) * car.speed * MOVE_SCALE;
 }
 
+function getCarTurnType(spec) {
+  if (!spec) return "none";
+  return spec.turn || "none";
+}
+
+function getTurnDisplayName(turnType) {
+  switch (turnType) {
+    case "lift":    return "Lifting Turn";
+    case "mirage":  return "Mirage Turn";
+    case "comet":   return "Comet Turn";
+    case "special": return "Special Turn";
+    default:        return "None";
+  }
+}
+
+function calcSpeedScore(spec) {
+  // 用加速由 4.5–5.3 map 去 1–10 分
+  const minAccel = 4.5;
+  const maxAccel = 5.3;
+  const a = Math.max(minAccel, Math.min(maxAccel, spec.acceleration || minAccel));
+  const ratio = (a - minAccel) / (maxAccel - minAccel);
+  return Math.max(1, Math.min(10, Math.round(ratio * 10)));
+}
+
+function calcControlScore(spec) {
+  // handling 0.7–0.95 左右，直接 *10 變成 7–10 分
+  const h = spec.handling || 0.7;
+  return Math.max(1, Math.min(10, Math.round(h * 10)));
+}
+
 function isLiftingTurnCar() {
     const spec = CARSPECS[selectedCar];
     if (!spec || !spec.image) return false;
@@ -441,25 +472,30 @@ function isMirageTurnCar() {
 }
 
 
-function tryActivateMirageTurn(player, maxSpeedNow) {
-    if (!player || mirageTurnActive) return;
+function tryActivateMirageTurn(player, maxSpeedNow, mode = "mirage") {
+  const speed = Math.abs(player.forwardSpeed || player.speed || 0);
+  const side = Math.abs(player.sideSpeed || 0);
+  const driftFactor = Math.min(1, side / (maxSpeedNow * 0.6));
+  const speedFactor = Math.min(1, speed / maxSpeedNow);
 
-    const speed = Math.abs(player.forwardSpeed || player.speed || 0);
-    const side  = Math.abs(player.sideSpeed || 0);
+  let power = 5.0 * (0.3 + 0.7 * driftFactor * speedFactor);
 
-    const driftFactor  = Math.min(1, side  / (maxSpeedNow * 0.6));
-    const speedFactor  = Math.min(1, speed / maxSpeedNow);
+  if (mode === "special") {
+    power *= 0.6; // Special：burst 弱一截
+  }
 
-    // 可以少少強化
-    mirageBoostPower = 5.0 * (0.3 + 0.7 * driftFactor * speedFactor);
-
-    mirageTurnActive = true;
-    mirageTurnTimer  = 0;
-    mirageBurstDone  = false;
-    mirageBoostLock  = 60;  // 約 1 秒內禁止普通 Boost
-	
-	mirageTurnBannerTimer = MIRAGE_TURN_BANNER_DURATION;
+  mirageTurnMode = mode;
+  mirageBoostPower = power;
+  mirageTurnActive = true;
+  mirageTurnTimer = 0;
+  mirageBurstDone = false;
+  mirageBoostLock = 60;
+  
+    if (mode === "mirage") {
+        mirageTurnBannerTimer = MIRAGE_TURN_BANNER_DURATION;
+    }
 }
+
 
 
 
@@ -977,16 +1013,90 @@ function openTrackSelect(m)  {
 
 }
 
+function toPrettyDriverName(key) {
+  if (!key) return "-";
+  // "kazami" -> "KAZAMI", "kaga" -> "KAGA"
+  // 如果你之後想要 "Hayato Kazami" 呢啲，可以喺呢度改 mapping。
+  return key.replace(/_/g, " ").toUpperCase();
+}
+
+function updateCarSpecPanel(spec) {
+  const nameElem      = document.getElementById("specCarName");
+  const speedBar      = document.getElementById("specSpeedBar");
+  const speedText     = document.getElementById("specSpeedText");
+  const controlBar    = document.getElementById("specControlBar");
+  const controlText   = document.getElementById("specControlText");
+  const aeroText      = document.getElementById("specAeroText");
+  const turnText      = document.getElementById("specTurnText");
+
+  const driverAvatar  = document.getElementById("specDriverAvatar");
+  const driverNameEl  = document.getElementById("specDriverName");
+
+  if (!spec || !nameElem) return;
+
+  // 車名
+  const baseName = (spec.image || "")
+    .split("/")
+    .pop()
+    .replace(".png", "")
+    .replace(/_/g, " ");
+  nameElem.textContent = baseName;
+
+  // Speed
+  const speedScore = calcSpeedScore(spec);
+  if (speedBar)  speedBar.style.width = (speedScore * 10) + "%";
+  if (speedText) speedText.textContent = `${speedScore}/10`;
+
+  // Control
+  const controlScore = calcControlScore(spec);
+  if (controlBar)  controlBar.style.width = (controlScore * 10) + "%";
+  if (controlText) controlText.textContent = `${controlScore}/10`;
+
+  // Aero
+  if (aeroText) {
+    aeroText.textContent = spec.hasAero ? "Yes" : "No";
+  }
+
+  // Turn
+  if (turnText) {
+    const turnType = getCarTurnType(spec);
+    turnText.textContent = getTurnDisplayName(turnType);
+  }
+
+  // ★ Driver：名 + 頭像
+  const driverKey = spec.driver || null;
+  if (driverNameEl) {
+    driverNameEl.textContent = toPrettyDriverName(driverKey);
+  }
+
+  if (driverAvatar) {
+    if (driverKey) {
+      const url = `driver/${driverKey}.webp`;
+      driverAvatar.src = url;
+
+      // 可選：fallback，避免檔案 miss 時出現破圖 icon
+      driverAvatar.onerror = () => {
+        // 只 reset 一次，避免 onerror 迴圈
+        if (!driverAvatar.dataset.fallback) {
+          driverAvatar.dataset.fallback = "1";
+          driverAvatar.src = "driver/default.webp"; // 你可以放一個通用 silhouette
+        }
+      };
+    } else {
+      driverAvatar.src = "driver/default.webp"; // 冇指定 driver 時用預設
+    }
+  }
+}
+
+
+
 function buildCarList()  {
 
   const container = document.getElementById('carList');
 
   container.innerHTML = '';
 
-  const teams =  {
-
-  }
-;
+  const teams =  {};
 
 CARSPECS.forEach((spec, index) =>  {
 
@@ -1008,11 +1118,9 @@ CARSPECS.forEach((spec, index) =>  {
 
 teams[teamName].push( {
   ...spec, index: index 
-}
-);
+});
 
-}
-);
+});
 
 Object.keys(teams).sort().forEach(teamName =>  {
 
@@ -1063,6 +1171,12 @@ Object.keys(teams).sort().forEach(teamName =>  {
     li.appendChild(img);
 
     li.appendChild(carName);
+	
+    // Hover（roll over）時更新右側 spec
+    li.addEventListener('mouseenter', () => {
+      const spec = CARSPECS[car.index];
+      updateCarSpecPanel(spec);
+    });	
 
     li.onclick = () =>  {
 
@@ -1079,18 +1193,19 @@ Object.keys(teams).sort().forEach(teamName =>  {
 
     li.classList.add('selected');
 
-  }
-;
+  };
 
 ul.appendChild(li);
 
-}
-);
+});
 
 container.appendChild(ul);
 
-}
-);
+});
+
+  if (typeof selectedCar === 'number' && CARSPECS[selectedCar]) {
+    updateCarSpecPanel(CARSPECS[selectedCar]);
+  }
 
 }
 
@@ -3173,30 +3288,28 @@ if (mirageTurnActive && player) {
         mirageBurstDone = true;
     }
 
-    // 3) 整個 Mirage 時窗完結就收工
-    if (mirageTurnTimer >= MIRAGE_TURN_DURATION) {
-        mirageTurnActive = false;
-        mirageTurnTimer  = 0;
-        mirageBoostPower = 0;
-        mirageBurstDone  = false;
-    }
-
+    // 3) 殘影（只喺真正 Mirage 模式先畫）
     const SPAWN_INTERVAL = 0.05; // 約 0.05 秒一粒 ≈ 3 frame 一粒
     mirageAfterimageAccum += deltaTime;
-    if (mirageAfterimageAccum >= SPAWN_INTERVAL) {
-        mirageAfterimageAccum -= SPAWN_INTERVAL;
-        emitMirageAfterimage(player);
+
+    if (mirageTurnMode === "mirage") {
+        if (mirageAfterimageAccum >= SPAWN_INTERVAL) {
+            mirageAfterimageAccum -= SPAWN_INTERVAL;
+            emitMirageAfterimage(player);
+        }
     }
 
-    if (mirageTurnTimer > MIRAGE_TURN_DURATION) {
-        mirageTurnActive = false;
-        mirageTurnTimer = 0;
-        mirageBoostPower = 0;
-        mirageBurstDone = false;
-        mirageAfterimageAccum = 0; // 結束時清零
+    // 4) 整個 Mirage / Special 時窗完結就收工
+    if (mirageTurnTimer >= MIRAGE_TURN_DURATION) {
+        mirageTurnActive      = false;
+        mirageTurnTimer       = 0;
+        mirageBoostPower      = 0;
+        mirageBurstDone       = false;
+        mirageAfterimageAccum = 0;
+        mirageTurnMode        = "mirage"; // reset default
     }
-
 }
+
 
 
 
@@ -3215,36 +3328,43 @@ if (player && gameState === 'racing') {
     const isTurning    = steeringMag >= 0.04;
     const isDriftingNow =
         isDriftMode || Math.abs(player.sideSpeed || 0) > 5.0;
+	const turnType = getCarTurnType(player.spec);
 
     if (mirageBoostLock > 0) mirageBoostLock--;  // 每 frame 減一
 
-    if (keys['Space']) {
-
-        // 1) Asurada: Lifting Turn
-        if (isLiftingTurnCar() && isTurning) {
-            const fastEnough = speed >= maxSpeedNow * 0.60;
-            if (fastEnough && !liftingTurnActive) {
-                tryActivateLiftingTurn(player, steer, maxSpeedNow);
-            }
-            isBoosting = false;
-        }
-
-        // 2) Ogre: Mirage Turn (drift + Space)
-        else if (isMirageTurnCar() && isDriftingNow) {
-            const fastEnough = speed >= maxSpeedNow * 0.50;
-            if (fastEnough && !mirageTurnActive) {
-                tryActivateMirageTurn(player, maxSpeedNow);
-            }
-            isBoosting = false;   // Mirage Turn 一律唔 Boost
-        }
-
-        // 3) 其他情況：正常 Boost (只有在冇 Mirage 鎖時)
-        else if (!mirageTurnActive && mirageBoostLock <= 0) {
-            if (boostMeter > 0 && boostCooldown <= 0) {
-                isBoosting = true;
-            }
-        }
-    } else {
+	if (keys['Space']) {
+	  if (turnType === "lift") {
+		const fastEnough = speed >= maxSpeedNow * 0.60;
+		if (isTurning && fastEnough && !liftingTurnActive) {
+		  tryActivateLiftingTurn(player, steer, maxSpeedNow);
+		  isBoosting = false;
+		}
+	  } else if (turnType === "mirage") {
+		const fastEnough = speed >= maxSpeedNow * 0.50;
+		if (isDriftingNow && fastEnough && !mirageTurnActive) {
+		  tryActivateMirageTurn(player, maxSpeedNow, "mirage"); // ← 新增參數
+		  isBoosting = false;
+		}
+	  } else if (turnType === "special") {
+		const fastEnough = speed >= maxSpeedNow * 0.50;
+		if (isDriftingNow && fastEnough && !mirageTurnActive) {
+		  tryActivateMirageTurn(player, maxSpeedNow, "special"); // ← 用同一套邏輯
+		  isBoosting = false;
+		}
+	  } else if (turnType === "comet") {
+		// 之後你想做 Comet Turn 時在呢度加
+		// tryActivateCometTurn(player, maxSpeedNow);
+		// isBoosting = false;
+	  } else {
+		// 無特殊 turn → 當普通 Boost
+		if (!mirageTurnActive &&
+			mirageBoostLock === 0 &&
+			boostMeter > 0 &&
+			boostCooldown === 0) {
+		  isBoosting = true;
+		}
+	  }
+	} else {
         // 放開 Space 即關 Boost
         isBoosting = false;
     }
