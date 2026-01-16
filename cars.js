@@ -5,7 +5,7 @@ const CARSPECS = [
   { image: "1. SUGO/Super_Asurada_01.png", acceleration: 5.1, handling: 0.8 , hasAero: true, hasBoost: true, turn: "none", driver: "Kazami"},
   { image: "1. SUGO/S-Asurada-AKF-11.png", acceleration: 5.25, handling: 0.7 , hasAero: true, hasBoost: true, turn: "none", driver: "Kazami"},
   { image: "1. SUGO/n-Asurada_AKF-0_G.png", acceleration: 5.3, handling: 0.7 , hasAero: true, hasBoost: true, turn: "lift", driver: "Kazami"},
-  { image: "1. SUGO/n-Asurada_AKF-0_G_A.png", acceleration: 5.3, handling: 0.7 , hasAero: false, hasBoost: true, turn: "lift", driver: "Asuka"},
+  { image: "1. SUGO/n-Asurada_AKF-0_G_A.png", acceleration: 5.0, handling: 0.7 , hasAero: false, hasBoost: true, turn: "lift", driver: "Asuka"},
   { image: "1. SUGO/Vision-Asurada.png", acceleration: 5.2, handling: 0.7 , hasAero: true, hasBoost: true, turn: "lift", driver: "Kazami"},
   
   { image: "1. SUGO/Garland_Kazami.png", acceleration: 5.25, handling: 0.8 , hasAero: false, hasBoost: false, turn: "none", driver: "Kazami"},
@@ -56,6 +56,7 @@ const CARSPECS = [
   { image: "6. OTHERS SINGLE RACER/Stampede_RS.png", acceleration: 4.7, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Gudelhian"},
   { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.3, handling: 0.8 , hasAero: true, hasBoost: true, turn: "special", driver: "Toma"}
 ];
+
 
 
 
