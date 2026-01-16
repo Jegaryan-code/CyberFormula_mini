@@ -46,6 +46,8 @@ const CARSPECS = [
   
   { image: "5. MISSING LINK/MISSIONNEL_VR-4.png", acceleration: 4.7, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Bootsvorz"},  
   { image: "5. MISSING LINK/STRATMISSIONNEL_MS-3.png", acceleration: 4.8, handling: 0.8 , hasAero: false, hasBoost: false, turn: "none", driver: "Bootsvorz"},
+  { image: "5. MISSING LINK/STRATMISSIONNEL_MS-3B.png", acceleration: 4.9, handling: 0.8 , hasAero: false, hasBoost: false, turn: "special", driver: "Leon"},
+  { image: "5. MISSING LINK/STRATMISSIONNEL_MS-3B.png", acceleration: 4.9, handling: 0.8 , hasAero: false, hasBoost: false, turn: "special", driver: "Henri"},
   { image: "5. MISSING LINK/Asurada_GST.png", acceleration: 4.8, handling: 0.8 , hasAero: false, hasBoost: false, turn: "none", driver: "Osamu"},  
   
   { image: "6. OTHERS SINGLE RACER/Albatrander_602.png", acceleration: 4.6, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Otomo"},
@@ -54,6 +56,7 @@ const CARSPECS = [
   { image: "6. OTHERS SINGLE RACER/Stampede_RS.png", acceleration: 4.7, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Gudelhian"},
   { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.3, handling: 0.8 , hasAero: true, hasBoost: true, turn: "special", driver: "Toma"}
 ];
+
 
 
 
