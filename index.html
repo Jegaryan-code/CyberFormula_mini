@@ -374,6 +374,26 @@
 		  filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.55));
 		}
 
+		/* Special Turn Tips */
+		#specTurnTips {
+		  margin-top: 14px;
+		  padding: 10px 12px;
+		  font-size: 25px;
+		  line-height: 1.5;
+		  color: #cccccc;
+		  background: rgba(0, 255, 255, 0.08);
+		  border-left: 3px solid rgba(0, 255, 255, 0.6);
+		  border-radius: 4px;
+		  display: none;  /* 預設隱藏，JS 有 turn 先顯示 */
+		}
+
+		#specTurnTips .tips-title {
+		  color: #00ffff;
+		  font-weight: 700;
+		  margin-right: 6px;
+		}
+
+
         
         /* 新增：車隊標題樣式 */
         .team-header {
@@ -588,10 +608,14 @@
 			<img id="specTeamLogo" src="" alt="Team Logo">
 		  </div>
 		  
+		  <div id="specTurnTips"></div>
+		  
+		  <button class="btn" id="confirmBtn">CONFIRM</button>
+		  
 	    </div>
 	  </div>
 	
-	  <button class="btn" id="confirmBtn">CONFIRM</button>
+	  
 	
 	</div>
 

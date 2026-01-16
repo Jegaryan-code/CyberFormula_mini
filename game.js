@@ -440,7 +440,7 @@ function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
     const rawName = spec && spec.image
         ? spec.image.split('/').pop().toLowerCase()
         : "";
-    if (!rawName.includes("n-asurada") || rawName.includes("vision-asurada")) return;
+    if (!rawName.includes("n-asurada") || !rawName.includes("vision-asurada")) return;
 
     const speed = Math.abs(player.forwardSpeed || player.speed || 0);
     const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
@@ -1047,8 +1047,10 @@ function updateCarSpecPanel(spec) {
   const turnBadge     = document.getElementById("specTurnBadge");
   
   const teamLogo = document.getElementById("specTeamLogo");
+  const tipsEl = document.getElementById("specTurnTips");
 
   if (!spec || !nameElem) return;
+  const turnType = getCarTurnType(spec);  // "lift" / "mirage" / "special" / "comet" / "none"
 
   // 車名
   const baseName = (spec.image || "")
@@ -1083,7 +1085,6 @@ function updateCarSpecPanel(spec) {
 
   // Turn
   if (turnText) {
-    const turnType = getCarTurnType(spec);
     turnText.textContent = getTurnDisplayName(turnType);
   }
 
@@ -1115,7 +1116,6 @@ function updateCarSpecPanel(spec) {
   }
 
   if (turnBadge) {
-    const turnType = getCarTurnType(spec);         // "lift" / "mirage" / "special" / "comet" / "none"
     const turnName = getTurnDisplayName(turnType); // 全名 "Lifting Turn" 等
 
     turnBadge.className = "spec-badge"; // reset base
@@ -1171,9 +1171,38 @@ function updateCarSpecPanel(spec) {
     } else {
       teamLogo.style.display = "none";
     }
-  }  
-  
+  }
+
+  // ----- Special Turn Tips ----- //
+  if (tipsEl) {
+    let tips = "";
+
+    switch (turnType) {
+      case "lift":
+        tips = "If you want to use <b>Lifting Turn</b>, try high speed then hold <b>DRIFT</b> + <b>BOOST</b> while turning.";
+        break;
+      case "mirage":
+        tips = "For <b>Mirage Turn</b>, drift at high speed and press <b>BOOST</b> in the corner to burst out with afterimages.";
+        break;
+      case "special":
+        tips = "This machine has a <b>Special Turn</b>. Combine <b>DRIFT</b> + <b>BOOST</b> in mid‑corner to trigger it.";
+        break;
+      case "comet":
+        tips = "To use <b>Comet Turn</b>, activate <b>BOOST</b> while drifting through the corner.";
+        break;
+      default:
+        tips = "";
+    }
+
+    if (tips) {
+      tipsEl.innerHTML = `<span class="tips-title">TIPS:</span>${tips}`;
+      tipsEl.style.display = "block";
+    } else {
+      tipsEl.style.display = "none";
+    }
+  }
 }
+
 
 
 
