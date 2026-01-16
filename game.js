@@ -440,7 +440,7 @@ function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
     const rawName = spec && spec.image
         ? spec.image.split('/').pop().toLowerCase()
         : "";
-    if (!rawName.includes("n-asurada") || !rawName.includes("vision-asurada")) return;
+    if (!rawName.includes("n-asurada")) return;
 
     const speed = Math.abs(player.forwardSpeed || player.speed || 0);
     const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
@@ -1923,7 +1923,7 @@ function emitMirageAfterimage(car) {
         x: car.x,
         y: car.y,
         // 注意：車實際畫圖時用 angle + Math.PI/2
-        angle: car.angle,
+        angle:  car.angle,
         length: CARHEIGHT * 1.8,
         width:  CARWIDTH  * 0.8,
         life: life,
@@ -2894,7 +2894,7 @@ boostParticles.forEach(p => {
 		// 用原本車圖做幽靈殘影
 		if (p.img && p.img.complete) {
 			// 跟車一樣：加上 Math.PI/2
-			ctx.rotate(p.angle + Math.PI / 2);
+			ctx.rotate( Math.PI / 2);
 
 			// 可以稍為縮細少少，免得太實
 			const scale = 0.95;
