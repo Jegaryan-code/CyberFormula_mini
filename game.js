@@ -1020,6 +1020,15 @@ function toPrettyDriverName(key) {
   return key.replace(/_/g, " ").toUpperCase();
 }
 
+function getTeamKeyFromImage(spec) {
+  if (!spec || !spec.image) return null;
+  const folder = spec.image.split("/")[0] || "";   // 例如 "1. SUGO"
+  const clean  = folder.replace(/^\d+\.\s*/, "").trim(); // "SUGO"
+  // 轉做 key：sugo / aoi / union_savior / stormzender / missing_link
+  return clean.toLowerCase().replace(/\s+/g, "_");
+}
+
+
 function updateCarSpecPanel(spec) {
   const nameElem      = document.getElementById("specCarName");
   const speedBar      = document.getElementById("specSpeedBar");
@@ -1031,6 +1040,13 @@ function updateCarSpecPanel(spec) {
 
   const driverAvatar  = document.getElementById("specDriverAvatar");
   const driverNameEl  = document.getElementById("specDriverName");
+  
+  const teamBadge     = document.getElementById("specTeamBadge");
+  const aeroBadge     = document.getElementById("specAeroBadge");
+  const boostBadge    = document.getElementById("specBoostBadge");
+  const turnBadge     = document.getElementById("specTurnBadge");
+  
+  const teamLogo = document.getElementById("specTeamLogo");
 
   if (!spec || !nameElem) return;
 
@@ -1041,6 +1057,14 @@ function updateCarSpecPanel(spec) {
     .replace(".png", "")
     .replace(/_/g, " ");
   nameElem.textContent = baseName;
+  
+  // ★ TEAM 名：由 folder 名拆
+  let teamName = "-";
+  if (spec.image) {
+    const folder = spec.image.split("/")[0] || "";
+    // e.g. "1. SUGO" -> 去數字同點
+    teamName = folder.replace(/^\d+\.\s*/, "").trim(); 
+  }  
 
   // Speed
   const speedScore = calcSpeedScore(spec);
@@ -1062,6 +1086,47 @@ function updateCarSpecPanel(spec) {
     const turnType = getCarTurnType(spec);
     turnText.textContent = getTurnDisplayName(turnType);
   }
+
+  // ----- Badges -----//
+  if (teamBadge) {
+    teamBadge.textContent = teamName || "-";
+    teamBadge.className = "spec-badge team";  // 重設 class
+  }
+
+  if (aeroBadge) {
+    aeroBadge.className = "spec-badge"; // reset base
+    if (spec.hasAero) {
+      aeroBadge.textContent = "AERO MACHINE";
+      aeroBadge.classList.add("aero-on");
+    } else {
+      aeroBadge.textContent = "NON-AERO";
+      aeroBadge.classList.add("aero-off");
+    }
+  }
+
+  if (boostBadge) {
+    boostBadge.className = "spec-badge"; // reset base
+    if (spec.hasBoost) {
+      boostBadge.textContent = "BOOST SYSTEM";
+    } else {
+      boostBadge.textContent = "NO AERO BOOST";
+      boostBadge.classList.add("boost-off");
+    }
+  }
+
+  if (turnBadge) {
+    const turnType = getCarTurnType(spec);         // "lift" / "mirage" / "special" / "comet" / "none"
+    const turnName = getTurnDisplayName(turnType); // 全名 "Lifting Turn" 等
+
+    turnBadge.className = "spec-badge"; // reset base
+    turnBadge.textContent = turnName;
+
+  if (turnType === "special" || turnType === "mirage" || turnType === "comet") {
+    turnBadge.classList.add("turn-special");
+    }
+  }
+
+
 
   // ★ Driver：名 + 頭像
   const driverKey = spec.driver || null;
@@ -1086,6 +1151,28 @@ function updateCarSpecPanel(spec) {
       driverAvatar.src = "driver/default.webp"; // 冇指定 driver 時用預設
     }
   }
+  
+  // ----- Team Logo (只顯示 1–5 隊) ----- //
+  if (teamLogo) {
+    const teamKey = getTeamKeyFromImage(spec);  // sugo / aoi / union_savior / ...
+
+    // 只對指定幾隊顯示 logo
+    const supportedTeams = ["sugo", "aoi", "union_savior", "stormzender", "missing_link"];
+
+    if (teamKey && supportedTeams.includes(teamKey)) {
+      const logoPath = `team/${teamKey}.webp`;   // 你如用 .png 就改做 .png
+      teamLogo.style.display = "block";
+      teamLogo.src = logoPath;
+
+    // 簡單 fallback：冇圖就隱藏
+      teamLogo.onerror = () => {
+        teamLogo.style.display = "none";
+      };
+    } else {
+      teamLogo.style.display = "none";
+    }
+  }  
+  
 }
 
 

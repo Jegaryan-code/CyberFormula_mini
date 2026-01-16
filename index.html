@@ -306,7 +306,73 @@
 		  text-transform: uppercase;
 		}
 
+		/* Badge 列：在 Driver 下面留少少空位 */
+		#specBadgeRow {
+		  margin-top: 14px;
+		  display: flex;
+		  flex-wrap: wrap;
+		  gap: 8px;
+		}
 
+		/* 基本 badge 造型 */
+		.spec-badge {
+		  font-size: 20x;
+		  letter-spacing: 2px;
+		  text-transform: uppercase;
+		  padding: 6px 15px;
+		  border-radius: 999px;
+		  border: 1px solid rgba(0, 255, 255, 0.6);
+		  color: #00ffff;
+		  background: radial-gradient(circle at 30% 0%, rgba(0,255,255,0.3), transparent 60%);
+		  box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+		  white-space: nowrap;
+		}
+
+		/* 針對不同類型微調顏色（可選） */
+		.spec-badge.team {
+		  border-color: #ffdd33;
+		  color: #ffdd33;
+		  box-shadow: 0 0 10px rgba(255, 221, 51, 0.5);
+		}
+
+		.spec-badge.aero-on {
+		  border-color: #00ff88;
+		  color: #00ff88;
+		}
+
+		.spec-badge.aero-off {
+		  border-color: #888888;
+		  color: #bbbbbb;
+		  box-shadow: none;
+		  background: rgba(40,40,40,0.8);
+		}
+
+		.spec-badge.boost-off {
+		  border-color: #ff5555;
+		  color: #ff8888;
+		}
+
+		.spec-badge.turn-special {
+		  border-color: #b080ff;
+		  color: #e0c0ff;
+		}
+
+		/* Team Logo 區：同 badge 拉開少少 */
+		#specTeamLogoSection {
+		  margin-top: 50px;
+		  padding-top: 10px;
+		  border-top: 1px solid rgba(255, 255, 255, 0.12);
+		  text-align: center;
+		}
+
+		/* Logo 圖本身 */
+		#specTeamLogo {
+		  max-width: 400px;
+		  max-height: 400px;
+		  object-fit: contain;
+		  opacity: 0.9;
+		  filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.55));
+		}
 
         
         /* 新增：車隊標題樣式 */
@@ -509,12 +575,23 @@
 			  <div id="specDriverLabel">DRIVER</div>
 			  <div id="specDriverName">-</div>
 			</div>		  
+		  </div>
 		  
-		</div>
+		  <div id="specBadgeRow">
+			<span id="specTeamBadge"  class="spec-badge">TEAM</span>
+			<span id="specAeroBadge"  class="spec-badge">AERO</span>
+			<span id="specBoostBadge" class="spec-badge">BOOST</span>
+			<span id="specTurnBadge"  class="spec-badge">TURN</span>
+		  </div>
+		  
+		  <div id="specTeamLogoSection">
+			<img id="specTeamLogo" src="" alt="Team Logo">
+		  </div>
+		  
+	    </div>
 	  </div>
-	</div>
 	
-	<button class="btn" id="confirmBtn">CONFIRM</button>
+	  <button class="btn" id="confirmBtn">CONFIRM</button>
 	
 	</div>
 
