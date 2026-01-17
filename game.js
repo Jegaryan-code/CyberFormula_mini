@@ -1883,15 +1883,12 @@ i++)  {
 
 const handleKeyDown = (e) =>  {
 
-  if (e.code === 'Space')  {
+if (e.code === 'Space')  {
 
-    e.preventDefault();
-
-    if (boostMeter > 0 && boostCooldown <= 0)  {
-
-      isBoosting = true;
-
-    }
+  e.preventDefault();
+  // ★ 只開 key 狀態，唔喺呢度動 isBoosting
+  keys['Space'] = true;
+  return;
 
 }
 else if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
@@ -1908,6 +1905,10 @@ else if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
 };
 
 const handleKeyUp = (e) => {
+  if (e.code === 'Space') {
+    isBoosting = false;
+  }
+	
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     isDriftLocked = false; // 放開按鍵就解除甩尾
   }
@@ -3448,44 +3449,59 @@ if (player && gameState === 'racing') {
 
     if (mirageBoostLock > 0) mirageBoostLock--;  // 每 frame 減一
 
+	// ---- Special Turn + Boost 處理 ----
+	let nextIsBoosting = false;
+
 	if (keys['Space']) {
+	  const turnType = getCarTurnType(player.spec);
+	  let usedSpecial = false;
+
+	  // 1) 先試用 Space 觸發特殊 Turn
 	  if (turnType === "lift") {
 		const fastEnough = speed >= maxSpeedNow * 0.60;
 		if (isTurning && fastEnough && !liftingTurnActive) {
 		  tryActivateLiftingTurn(player, steer, maxSpeedNow);
-		  isBoosting = false;
+		  usedSpecial = true;
 		}
+
 	  } else if (turnType === "mirage") {
 		const fastEnough = speed >= maxSpeedNow * 0.50;
 		if (isDriftingNow && fastEnough && !mirageTurnActive) {
-		  tryActivateMirageTurn(player, maxSpeedNow, "mirage"); // ← 新增參數
-		  isBoosting = false;
+		  tryActivateMirageTurn(player, maxSpeedNow, "mirage");
+		  usedSpecial = true;
 		}
+
 	  } else if (turnType === "special") {
 		const fastEnough = speed >= maxSpeedNow * 0.50;
 		if (isDriftingNow && fastEnough && !mirageTurnActive) {
-		  tryActivateMirageTurn(player, maxSpeedNow, "special"); // ← 用同一套邏輯
-		  isBoosting = false;
+		  tryActivateMirageTurn(player, maxSpeedNow, "special");
+		  usedSpecial = true;
 		}
+
 	  } else if (turnType === "comet") {
-		// 之後你想做 Comet Turn 時在呢度加
+		// 將來有 Comet Turn 喺度加：
 		// tryActivateCometTurn(player, maxSpeedNow);
-		// isBoosting = false;
-	  } else {
-		// 無特殊 turn → 當普通 Boost
+		// usedSpecial = true;
+	  }
+
+	  // 2) 呢 frame 冇觸發任何特殊 Turn → 視為普通 Boost
+	  if (!usedSpecial) {
 		if (!mirageTurnActive &&
 			mirageBoostLock === 0 &&
 			boostMeter > 0 &&
 			boostCooldown === 0) {
-		  isBoosting = true;
+
+		  nextIsBoosting = true;
 		}
 	  }
-	} else {
-        // 放開 Space 即關 Boost
-        isBoosting = false;
-    }
+	}
 
-    updateCarPhysics(player, acc, steer, deltaTime);
+	// ★ 無論按唔按 Space，都喺呢度一次過決定 isBoosting
+	isBoosting = nextIsBoosting;
+
+	// 之後先行物理
+	updateCarPhysics(player, acc, steer, deltaTime);
+
 }
 
 
