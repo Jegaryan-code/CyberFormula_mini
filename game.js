@@ -89,9 +89,9 @@ let liftingTurnActive = false;
 let liftingTurnTimer = 0;
 let liftingTurnDirection = 0;   // -1 = 左轉, +1 = 右轉
 let liftingTurnBaseSpeed = 0;   // 觸發當刻的基準速度
-const LIFTING_TURN_DURATION = 0.8;
+const LIFTING_TURN_DURATION = 0.85;
 const LIFTING_TURN_SPEED_MULT = 1.02;
-const LIFTING_TURN_MIN_SPEED_RATIO = 0.60; // 和上面保持一致
+const LIFTING_TURN_MIN_SPEED_RATIO = 0.40; // 和上面保持一致
 
 let mirageTurnMode = "mirage"; // "mirage" | "special"
 let mirageTurnActive = false;
@@ -431,37 +431,58 @@ function isLiftingTurnCar() {
 }
 
 function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
-    if (liftingTurnActive) return;
-    if (!player) return;
-    if (gameState !== 'racing') return;
+  if (liftingTurnActive) return;
+  if (!player) return;
+  if (gameState !== 'racing') return;
 
-    // 只限 Asurada
-    const spec = CARSPECS[selectedCar];
-    const rawName = spec && spec.image
-        ? spec.image.split('/').pop().toLowerCase()
-        : "";
-    if (!rawName.includes("n-asurada")) return;
+  // 只支援 Asurada 系列
+  const spec = CARSPECS[selectedCar];
+  const rawName = spec && spec.image
+    ? spec.image.split('/').pop().toLowerCase()
+    : "";
+  if (!rawName.includes("n-asurada") &&
+      !rawName.includes("vision-asurada")) {
+    return;
+  }
 
-    const speed = Math.abs(player.forwardSpeed || player.speed || 0);
-    const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
-    if (speed < needSpeed) return;
+  const speedNow = Math.abs(player.forwardSpeed || player.speed || 0);
+  const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
+  if (speedNow < needSpeed) return;
 
-    // 需要有明顯轉向
-    if (Math.abs(steer) < 0.08) return;
+  const side = player.sideSpeed || 0;
+  let dir;
 
-    // 要求玩家按住 Space 才會觸發
-    if (!keys['Space']) return;
+  // 1) 以側滑方向決定彎向（正 = 左彎, 負 = 右彎）
+  if (Math.abs(side) > 0.5) {
+    dir = side > 0 ? -1 : 1;   // 左彎 -> dir=-1, 右彎 -> dir=1
+  }
+  // 2) 次選用即時 steering
+  else if (Math.abs(steer) > 0.001) {
+    dir = steer < 0 ? -1 : 1;
+  }
+  // 3) 再退一步用鍵盤
+  else if (keys['ArrowLeft']) {
+    dir = -1;
+  } else if (keys['ArrowRight']) {
+    dir = 1;
+  } else {
+    dir = 1;  // fallback
+  }
 
-    // 方向：根據 steer 正負
-    liftingTurnDirection = steer > 0 ? 1 : -1;
-    liftingTurnActive = true;
-    liftingTurnTimer = 0;
+  liftingTurnDirection = dir;
+  liftingTurnActive = true;
+  liftingTurnTimer = 0;
+  liftingTurnBaseSpeed = speedNow;
 
-    liftingTurnBaseSpeed = Math.abs(player.forwardSpeed || player.speed || 0);
-    player.sideSpeed = player.sideSpeed || 0;
-	
-	liftingTurnBannerTimer = LIFTING_TURN_BANNER_DURATION;
+  const outwardSign = (dir === 1 ? 1 : -1);
+  const outwardKick = maxSpeedNow * 0.35;   // 可以之後再 tune
+  player.sideSpeed += outwardSign * outwardKick;
+
+  // ★ 觸發時開啟大字 Banner 計時
+  liftingTurnBannerTimer = LIFTING_TURN_BANNER_DURATION;
+
 }
+
 
 function isMirageTurnCar() {
     const spec = CARSPECS[selectedCar];
@@ -474,27 +495,27 @@ function isMirageTurnCar() {
 
 function tryActivateMirageTurn(player, maxSpeedNow, mode = "mirage") {
   const speed = Math.abs(player.forwardSpeed || player.speed || 0);
-  const side = Math.abs(player.sideSpeed || 0);
+  const side  = Math.abs(player.sideSpeed || 0);
   const driftFactor = Math.min(1, side / (maxSpeedNow * 0.6));
   const speedFactor = Math.min(1, speed / maxSpeedNow);
-
   let power = 5.0 * (0.3 + 0.7 * driftFactor * speedFactor);
+  if (mode === "special") power *= 0.6;
 
-  if (mode === "special") {
-    power *= 0.6; // Special：burst 弱一截
-  }
-
-  mirageTurnMode = mode;
+  mirageTurnMode   = mode;
   mirageBoostPower = power;
   mirageTurnActive = true;
-  mirageTurnTimer = 0;
-  mirageBurstDone = false;
-  mirageBoostLock = 60;
-  
-    if (mode === "mirage") {
-        mirageTurnBannerTimer = MIRAGE_TURN_BANNER_DURATION;
-    }
+  mirageTurnTimer  = 0;
+  mirageBurstDone  = false;
+  mirageBoostLock  = 60;
+  if (mode === "mirage") {
+    mirageTurnBannerTimer = MIRAGE_TURN_BANNER_DURATION;
+  }
+
+  console.log("MIRAGE TURN TRIGGERED", "mode =", mode,
+              "speed =", speed.toFixed(2),
+              "side =", side.toFixed(2));
 }
+
 
 
 
@@ -1179,16 +1200,16 @@ function updateCarSpecPanel(spec) {
 
     switch (turnType) {
       case "lift":
-        tips = "If you want to use <b>Lifting Turn</b>, try high speed then hold <b>DRIFT</b> + <b>BOOST</b> while turning.";
+        tips = "If you want to use <b>Lifting Turn</b>, try high speed then hold <b>DRIFT(DOUBLE TAP ← →)</b> + <b>BOOST(KEY: X)</b> while turning.";
         break;
       case "mirage":
-        tips = "For <b>Mirage Turn</b>, drift at high speed and press <b>BOOST</b> in the corner to burst out with afterimages.";
+        tips = "For <b>Mirage Turn</b>, <b>DRIFT(DOUBLE TAP ← →)</b> at high speed and press <b>BOOST(KEY: X)</b> in the corner to burst out with afterimages.";
         break;
       case "special":
-        tips = "This machine has a <b>Special Turn</b>. Combine <b>DRIFT</b> + <b>BOOST</b> in mid‑corner to trigger it.";
+        tips = "This machine has a <b>Special Turn</b>. Combine <b>DRIFT(DOUBLE TAP ← →)</b> + <b>BOOST(KEY: X)</b> in mid‑corner to trigger it.";
         break;
       case "comet":
-        tips = "To use <b>Comet Turn</b>, activate <b>BOOST</b> while drifting through the corner.";
+        tips = "To use <b>Comet Turn</b>, activate <b>BOOST(KEY: X)</b> while drifting through the corner.";
         break;
       default:
         tips = "";
@@ -1881,39 +1902,7 @@ i++)  {
 
 }
 
-const handleKeyDown = (e) =>  {
 
-if (e.code === 'Space')  {
-
-  e.preventDefault();
-  // ★ 只開 key 狀態，唔喺呢度動 isBoosting
-  keys['Space'] = true;
-  return;
-
-}
-else if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
-    const now = Date.now();
-    // 如果兩次按下的間隔小於 300ms，觸發甩尾鎖定
-    if (now - lastTapTime[e.key] < DOUBLE_TAP_DELAY) {
-      isDriftLocked = true; 
-    }
-    lastTapTime[e.key] = now;
-    keys[e.key] = true;
-  } else if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
-    keys[e.key] = true;
-  }
-};
-
-const handleKeyUp = (e) => {
-  if (e.code === 'Space') {
-    isBoosting = false;
-  }
-	
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    isDriftLocked = false; // 放開按鍵就解除甩尾
-  }
-  if (e.key in keys) keys[e.key] = false;
-};
 
 function emitMirageAfterimage(car) {
     const life = 28; // 比原本長少少
@@ -3298,48 +3287,46 @@ player.angle += steering * steerDamp * player.forwardSpeed / 8;
 
 // --- Lifting Turn 額外效果 ---
 if (liftingTurnActive) {
-    liftingTurnTimer += deltaTime;
-    const t = Math.min(1, liftingTurnTimer / LIFTING_TURN_DURATION);
+  liftingTurnTimer += deltaTime;
+  const t = Math.min(1, liftingTurnTimer / LIFTING_TURN_DURATION);
+  const ease = Math.sin(Math.PI * t);
 
-    // 0 → 1 → 0，中段最強
-    const ease = Math.sin(Math.PI * t);
+  const speedNow = Math.abs(player.forwardSpeed || player.speed || 0);
+  const maxSpeedNow = getCarMaxSpeed(player);
+  const speedRatio = Math.min(1, speedNow / maxSpeedNow);
 
-    const speedNow = Math.abs(player.forwardSpeed || player.speed || 0);
-    const maxSpeedNow = getCarMaxSpeed(player);
-    const speedRatio = Math.min(1, speedNow / maxSpeedNow);
+  const baseTurnRate = 1.4; // 高峰期大約每秒 80 度左右
+  const extraTurn =
+    liftingTurnDirection *
+    baseTurnRate *
+    ease *
+    (0.7 + 0.3 * speedRatio) *
+    deltaTime;   // ⚠️ 只乘一次 dt
 
-    // 每秒額外轉向速度（rad/s），1.4 左右大約 40 度
-    const baseTurnRate = 1.4; 
-    const extraTurn =
-        liftingTurnDirection *
-        baseTurnRate *
-        ease *
-        (0.7 + 0.3 * speedRatio) *
-        deltaTime;   // ★ 一定要乘 deltaTime
+  player.angle += extraTurn;
 
-    player.angle += extraTurn;
+  // 原本 keepRatio / maxAllowSpeed 部分可以照跟用：
+  const keepRatio = 0.97;
+  const minKeepSpeed = liftingTurnBaseSpeed * keepRatio;
+  const maxAllowSpeed = liftingTurnBaseSpeed * LIFTING_TURN_SPEED_MULT;
+  const sign = Math.sign(player.forwardSpeed || 1);
 
-    // 速度只保住，不再像 Boost 咁抽上去
-    const keepRatio = 0.97; // 最多跌 3%
-    const minKeepSpeed = liftingTurnBaseSpeed * keepRatio;
-    const maxAllowSpeed = liftingTurnBaseSpeed * LIFTING_TURN_SPEED_MULT;
+  if (speedNow < minKeepSpeed) {
+    const diff = minKeepSpeed - speedNow;
+    player.forwardSpeed += sign * diff * 0.25;
+  }
+  if (Math.abs(player.forwardSpeed) > maxAllowSpeed) {
+    player.forwardSpeed = sign * maxAllowSpeed;
+  }
 
-    const sign = Math.sign(player.forwardSpeed || 1);
-    if (speedNow < minKeepSpeed) {
-        const diff = minKeepSpeed - speedNow;
-        player.forwardSpeed += sign * diff * 0.25;
-    }
-    if (Math.abs(player.forwardSpeed) > maxAllowSpeed) {
-        player.forwardSpeed = sign * maxAllowSpeed;
-    }
-
-    if (liftingTurnTimer >= LIFTING_TURN_DURATION) {
-        liftingTurnActive = false;
-        liftingTurnTimer = 0;
-        liftingTurnDirection = 0;
-        liftingTurnBaseSpeed = 0;
-    }
+  if (liftingTurnTimer >= LIFTING_TURN_DURATION) {
+    liftingTurnActive = false;
+    liftingTurnTimer = 0;
+    liftingTurnDirection = 0;
+    liftingTurnBaseSpeed = 0;
+  }
 }
+
 
 
 
@@ -3431,78 +3418,92 @@ if (mirageTurnActive && player) {
 
 
 if (player && gameState === 'racing') {
-    let acc = 0;
-    if (keys['ArrowUp'])  acc = 0.4;
-    if (keys['ArrowDown']) acc = -0.1;
+  // --- 入油 / 煞車 ---
+  let acc = 0;
+  if (keys['ArrowUp'])   acc =  0.4;
+  if (keys['ArrowDown']) acc = -0.1;
 
-    let steer = 0;
-    if (keys['ArrowLeft'])  steer = -0.1;
-    if (keys['ArrowRight']) steer =  0.1;
+  // --- 轉向輸入 ---
+  let steer = 0;
+  if (keys['ArrowLeft'])  steer = -0.1;
+  if (keys['ArrowRight']) steer =  0.1;
 
-    const maxSpeedNow  = getCarMaxSpeed(player);
-    const speed        = Math.abs(player.forwardSpeed || player.speed || 0);
-    const steeringMag  = Math.abs(steer);
-    const isTurning    = steeringMag >= 0.04;
-    const isDriftingNow =
-        isDriftMode || Math.abs(player.sideSpeed || 0) > 5.0;
-	const turnType = getCarTurnType(player.spec);
+  // --- 基本狀態 ---
+  const maxSpeedNow  = getCarMaxSpeed(player);
+  const speed        = Math.abs(player.forwardSpeed || player.speed || 0);
+// 新 drift 判斷（專俾 Special 用）
+const sideAbs = Math.abs(player.sideSpeed || 0);
+const isDriftingNow = sideAbs > 2.0 && speed > maxSpeedNow * 0.2;
+  
+  const turnType = getCarTurnType(player.spec);
 
-    if (mirageBoostLock > 0) mirageBoostLock--;  // 每 frame 減一
+  if (mirageBoostLock > 0) mirageBoostLock--;  // 每 frame 減一
 
-	// ---- Special Turn + Boost 處理 ----
-	let nextIsBoosting = false;
+  // ---- Special Turn + Boost 處理 ----
+  let nextIsBoosting = false;
+  const spaceDown = !!keys['Space'];
 
-	if (keys['Space']) {
-	  const turnType = getCarTurnType(player.spec);
-	  let usedSpecial = false;
+  if (spaceDown && !liftingTurnActive && !mirageTurnActive) {
+	const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
 
-	  // 1) 先試用 Space 觸發特殊 Turn
-	  if (turnType === "lift") {
-		const fastEnough = speed >= maxSpeedNow * 0.60;
-		if (isTurning && fastEnough && !liftingTurnActive) {
-		  tryActivateLiftingTurn(player, steer, maxSpeedNow);
-		  usedSpecial = true;
-		}
+    let usedSpecial = false;
 
-	  } else if (turnType === "mirage") {
-		const fastEnough = speed >= maxSpeedNow * 0.50;
-		if (isDriftingNow && fastEnough && !mirageTurnActive) {
-		  tryActivateMirageTurn(player, maxSpeedNow, "mirage");
-		  usedSpecial = true;
-		}
+    // Lifting Turn：drift 中 + 速度達標 → 交俾 tryActivateLiftingTurn 決定方向
+    if (turnType === "lift" &&
+        speed >= maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO &&
+        isDriftingNow) {
 
-	  } else if (turnType === "special") {
-		const fastEnough = speed >= maxSpeedNow * 0.50;
-		if (isDriftingNow && fastEnough && !mirageTurnActive) {
-		  tryActivateMirageTurn(player, maxSpeedNow, "special");
-		  usedSpecial = true;
-		}
+      tryActivateLiftingTurn(player, steer, maxSpeedNow);
+      usedSpecial = true;
+    }
 
-	  } else if (turnType === "comet") {
-		// 將來有 Comet Turn 喺度加：
-		// tryActivateCometTurn(player, maxSpeedNow);
-		// usedSpecial = true;
-	  }
+    // Mirage Turn
+    else if (turnType === "mirage" &&
+             speed >= maxSpeedNow * 0.50 &&
+             isDriftingNow) {
 
-	  // 2) 呢 frame 冇觸發任何特殊 Turn → 視為普通 Boost
-	  if (!usedSpecial) {
-		if (!mirageTurnActive &&
-			mirageBoostLock === 0 &&
-			boostMeter > 0 &&
-			boostCooldown === 0) {
+      tryActivateMirageTurn(player, maxSpeedNow, "mirage");
+      usedSpecial = true;
+    }
 
-		  nextIsBoosting = true;
-		}
-	  }
-	}
+    // Special Turn（強化版 Mirage）
+    else if (turnType === "special" &&
+             speed >= maxSpeedNow * 0.50 &&
+             isDriftingNow) {
 
-	// ★ 無論按唔按 Space，都喺呢度一次過決定 isBoosting
-	isBoosting = nextIsBoosting;
+      tryActivateMirageTurn(player, maxSpeedNow, "special");
+      usedSpecial = true;
+    }
 
-	// 之後先行物理
-	updateCarPhysics(player, acc, steer, deltaTime);
+    // 將來 Comet Turn
+    else if (turnType === "comet") {
+      tryActivateCometTurn(player, maxSpeedNow);
+      usedSpecial = true;
+    }
 
+    // 呢 frame 冇任何 Special Turn → 視為普通 Boost
+    if (!usedSpecial) {
+      if (boostMeter > 0 &&
+          boostCooldown === 0 &&
+          !mirageTurnActive) {
+
+        nextIsBoosting = true;
+      }
+    }
+  }
+
+  // 進行中嘅 Lifting / Mirage 一律禁止 Boost
+  if (liftingTurnActive || mirageTurnActive) {
+    nextIsBoosting = false;
+  }
+
+  // 最後更新 isBoosting
+  isBoosting = nextIsBoosting;
+
+  // 之後先行物理
+  updateCarPhysics(player, acc, steer, deltaTime);
 }
+
 
 
 
@@ -3990,39 +3991,9 @@ if ('ontouchstart' in window && navigator.maxTouchPoints > 0 && screen.width <= 
 
     touch[d.toLowerCase()] = false;
 
-  }
-);
+  });
 
-}
-);
-
-const boostBtn = document.getElementById('boostBtn');
-
-if (boostBtn)  {
-
-  boostBtn.addEventListener('touchstart', e =>  {
-
-    e.preventDefault();
-
-    if (boostMeter > 0 && boostCooldown <= 0)  {
-
-      isBoosting = true;
-
-    }
-
-}
-);
-
-boostBtn.addEventListener('touchend', e =>  {
-
-  e.preventDefault();
-
-  isBoosting = false;
-
-}
-);
-
-}
+});
 
 }
 
@@ -4065,7 +4036,7 @@ window.addEventListener('keydown', e => {
         }
         keys[e.key] = true;
     }
-    if (e.code === 'Space') {
+    if (e.code === 'Space' || e.code === 'KeyX') {
         e.preventDefault();
         keys['Space'] = true;
     }
@@ -4073,7 +4044,7 @@ window.addEventListener('keydown', e => {
 
 window.addEventListener('keyup', e => {
 	
-    if (e.code === 'Space') {
+    if (e.code === 'Space' || e.code === 'KeyX') {
         keys['Space'] = false;
     }
 	
