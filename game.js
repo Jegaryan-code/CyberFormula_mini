@@ -1,5 +1,3 @@
-
-
 document.addEventListener('DOMContentLoaded', () =>  {
 
   const SCALE = 5.0;
@@ -21,27 +19,11 @@ document.addEventListener('DOMContentLoaded', () =>  {
   const W = canvas.width, H = canvas.height;
 
   const AI_AVATAR_MAP = [
-  {
-    key: "asurada", img: "ai/AI_ASURADA.png", name: "ASURADA" 
-  }
-,
-{
-  key: "garland", img: "ai/AI_Garland.png", name: "GARLAND" 
-}
-,
-{
-  key: "ogre", img: "ai/AI_OGRE.png", name: "OGRE" 
-}
-,
-{
-  key: "al-zard", img: "ai/AI_ZARD.png", name: "AL-ZARD" 
-}
-,
-{
-  key: "ex-zard", img: "ai/AI_ZARD.png", name: "EX-ZARD" 
-}
-
-];
+  {key: "asurada", img: "ai/AI_ASURADA.png", name: "ASURADA"},
+  {key: "garland", img: "ai/AI_Garland.png", name: "GARLAND"},
+  {key: "ogre", img: "ai/AI_OGRE.png", name: "OGRE" },
+  {key: "al-zard", img: "ai/AI_ZARD.png", name: "AL-ZARD"},
+  {key: "ex-zard", img: "ai/AI_ZARD.png", name: "EX-ZARD"}];
 
 let currentAIAvatarImg = new Image();
 
@@ -483,7 +465,6 @@ function tryActivateLiftingTurn(player, steer, maxSpeedNow) {
 
 }
 
-
 function isMirageTurnCar() {
     const spec = CARSPECS[selectedCar];
     if (!spec || !spec.image) return false;
@@ -510,15 +491,7 @@ function tryActivateMirageTurn(player, maxSpeedNow, mode = "mirage") {
   if (mode === "mirage") {
     mirageTurnBannerTimer = MIRAGE_TURN_BANNER_DURATION;
   }
-
-  console.log("MIRAGE TURN TRIGGERED", "mode =", mode,
-              "speed =", speed.toFixed(2),
-              "side =", side.toFixed(2));
 }
-
-
-
-
 
 function drawDashboard(speed)  {
 
@@ -737,7 +710,6 @@ currentAIName = "AI";
 
 }
 
-
 function drawMinimap()  {
 
   miniCtx.clearRect(0, 0, MW, MH);
@@ -812,12 +784,10 @@ carsToDraw.forEach(car =>  {
 
   }
 
-}
-);
+});
 
 }
  
-
 function checkCollisions(car1, car2)  {
 
   const dx = car2.x - car1.x;
@@ -949,7 +919,6 @@ function followWaypoints(car) {
   if (car.isAeroMode) emitAeroAirflow(car);
 }
 
-
 function loadTrack(i)  {
 
   currentTrack = i;
@@ -960,8 +929,7 @@ function loadTrack(i)  {
 
     document.getElementById('hud').textContent = `TRACK: ${TRACKS[i].name}`;
 
-  }
-;
+  };
 
 trackImg.src = TRACKS[i].bgImage;
 
@@ -1024,13 +992,11 @@ function openTrackSelect(m)  {
 
       loadTrack(i);
 
-    }
-  ;
+    };
 
   grid.appendChild(d);
 
-}
-);
+});
 
 }
 
@@ -1048,7 +1014,6 @@ function getTeamKeyFromImage(spec) {
   // 轉做 key：sugo / aoi / union_savior / stormzender / missing_link
   return clean.toLowerCase().replace(/\s+/g, "_");
 }
-
 
 function updateCarSpecPanel(spec) {
   const nameElem      = document.getElementById("specCarName");
@@ -1147,8 +1112,6 @@ function updateCarSpecPanel(spec) {
     }
   }
 
-
-
   // ★ Driver：名 + 頭像
   const driverKey = spec.driver || null;
   if (driverNameEl) {
@@ -1223,9 +1186,6 @@ function updateCarSpecPanel(spec) {
     }
   }
 }
-
-
-
 
 function buildCarList()  {
 
@@ -1434,8 +1394,7 @@ player =  {
   img: playerCarImg,
   raceTime: 0,
   prevY: playerGridPos.y * SCALE
-}
-;
+};
 
 gameState = 'countdown';
 
@@ -1461,9 +1420,9 @@ if (countdownElement)  {
 
 const COUNTDOWN_DURATION_MS = 6000;
 
-if (countdownInterval)  {
-
-  clearTimeout(countdownInterval);
+if (countdownInterval) {
+	
+	clearTimeout(countdownInterval);
 
 }
 
@@ -1677,8 +1636,7 @@ function drawStartGrid(ctx, track, scale, offsetX, offsetY)  {
 
     ctx.fillText(i + 1, x, y - 10);
 
-  }
-);
+  });
 
 ctx.restore();
 
@@ -1847,8 +1805,7 @@ function emitBoostForCar(car, isPlayer)  {
       maxLife: life,
       gravity: 0,
       color: 'rgba(0, 180, 255, 0.85)'
-    }
-  );
+    });
 
 }
 
@@ -1895,14 +1852,11 @@ i++)  {
     vy: -Math.sin(car.angle) * 1 + Math.sin(car.angle + Math.PI / 2) * sideDirection * (1 + Math.random() * 2),
     life: 40, 
     maxLife: 60
-  }
-);
+  });
 
 }
 
 }
-
-
 
 function emitMirageAfterimage(car) {
     const life = 28; // 比原本長少少
@@ -1992,27 +1946,13 @@ const getColor = (h) =>  {
 
   return '#FF0000';
 
-}
-;
+};
 
 const positions = [
-{
-  x: 10, y: 15, h: 20, w: 10
-}
-, 
-{
-  x: 80, y: 15, h: 20, w: 10
-}
-, 
-{
-  x: 10, y: 65, h: 20, w: 10
-}
-, 
-{
-  x: 80, y: 65, h: 20, w: 10
-}
- 
-];
+{  x: 10, y: 15, h: 20, w: 10}, 
+{  x: 80, y: 15, h: 20, w: 10}, 
+{  x: 10, y: 65, h: 20, w: 10}, 
+{  x: 80, y: 65, h: 20, w: 10}];
 
 positions.forEach((pos, index) =>  {
 
@@ -2030,8 +1970,7 @@ positions.forEach((pos, index) =>  {
 
   ctx.strokeRect(pos.x, pos.y, pos.w, pos.h);
 
-}
-);
+});
 
 const avg = health.reduce((a, b) => a + b, 0) / 4;
 
@@ -2175,8 +2114,7 @@ if (trackData && trackData.pitWaypoints && trackData.pitWaypoints.length > 1)  {
 
   }
 
-}
-);
+});
 
 for (let i = trackData.pitWaypoints.length - 1;
 i >= 0;
@@ -2231,8 +2169,7 @@ else  {
 
 }
 
-}
-);
+});
 
 ctx.stroke();
 
@@ -2304,11 +2241,7 @@ else  {
 
   ctx.fillText(`TEAM ${i + 1}`, currentX - 10, currentY + 5);
 
-}
-
-}
-
-}
+}}}
 
 ctx.restore();
 
@@ -2370,7 +2303,6 @@ else if (mirageTurnBannerTimer > 0) {
     ctx.restore();
 }
 
-
 if (isBoosting)  {
 
   let grd = ctx.createRadialGradient(W/2, H/2, W/4, W/2, H/2, W/1.2);
@@ -2395,7 +2327,6 @@ if (isBoosting && !lastIsBoosting)  {
 
 lastIsBoosting = isBoosting;
 
-
 ctx.save();
 
 tireMarks.forEach(mark =>  {
@@ -2418,8 +2349,7 @@ tireMarks.forEach(mark =>  {
 
   ctx.stroke();
 
-}
-);
+});
 
 ctx.restore();
 
@@ -2441,8 +2371,7 @@ dustParticles.forEach(p =>  {
 
   ctx.fill();
 
-}
-);
+});
 
 ctx.restore();
 
@@ -2462,8 +2391,7 @@ allCars.forEach(car =>  {
 
 ctx.restore();
 
-}
-);
+});
 
 if (gameState === 'racing' && !raceFinished)  {
 
@@ -2694,8 +2622,7 @@ tireMarks.push( {
 
   x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
   life: TIRE_MARK_LIFE 
-}
-);
+});
 
 emitDustForCar(car, false, AI_MAX_SPEED);
 
@@ -2703,13 +2630,11 @@ emitDustForCar(car, false, AI_MAX_SPEED);
 
 car.lastTireMarkPosL =  {
   x: currentX_L, y: currentY_L
-}
-;
+};
 
 car.lastTireMarkPosR =  {
   x: currentX_R, y: currentY_R
-}
-;
+};
 
 // 冷卻時間
 if (car.aiBoostCooldown > 0) car.aiBoostCooldown--;
@@ -2776,9 +2701,7 @@ else  {
     emitAeroAirflow(car, false);
 
   }
-
 }
-
 });
 
 // ★★★ 新增：AI 互相碰撞檢查（放喺 allCars.forEach 之後） ★★★
@@ -2815,16 +2738,9 @@ if (!playerBoostingActive && !playerSteeringActive && wantsForwardVfx)  {
     if (Math.random() < flameIntensity * 0.8)  {
 
       emitAeroAirflow(player, true);
-
         
-    }
-
-    
-}
-
-}
-
-}
+    }   
+}}}
 
 boostParticles = boostParticles.filter(p =>  {
 
@@ -2838,8 +2754,7 @@ boostParticles = boostParticles.filter(p =>  {
 
   return p.life > 0;
 
-}
-);
+});
 
 tireMarks = tireMarks.filter(mark =>  {
 
@@ -2847,8 +2762,7 @@ tireMarks = tireMarks.filter(mark =>  {
 
   return mark.life > 0;
 
-}
-);
+});
 
 dustParticles = dustParticles.filter(p =>  {
 
@@ -2864,8 +2778,7 @@ dustParticles = dustParticles.filter(p =>  {
 
   return p.life > 0;
 
-}
-);
+});
 
 ctx.save();
 
@@ -3148,13 +3061,11 @@ else if (trackData.pitEntry && !playerAutoDriving)  {
 
     keys =  {
 
-    }
-  ;
+    };
 
   touch =  {
 
-  }
-;
+  };
 
 wantsToPit = false;
 
@@ -3194,15 +3105,11 @@ else if (distToEntry < PIT_ENTRY_TRIGGER_DIST)  {
     pitHudPrompt.style.borderColor = "#ffffff";
 
   }
-
 }
 
 else  {
-
   if (pitHudPrompt) pitHudPrompt.style.display = 'none';
-
 }
-
 }
 
 if (!playerAutoDriving)  {
@@ -3327,10 +3234,6 @@ if (liftingTurnActive) {
   }
 }
 
-
-
-
-
 // 根據是否 Lifting Turn 決定摩擦
 let sideFrictionFactor = liftingTurnActive ? 0.992 : 0.99;
 // Lifting Turn 中反而加大側向速度生成
@@ -3348,7 +3251,6 @@ const maxSideSlip = Math.abs(player.forwardSpeed) * sideSlipRatio;
 player.sideSpeed = Math.max(-maxSideSlip, Math.min(player.sideSpeed, maxSideSlip));
 player.sideSpeed *= sideFrictionFactor;
 player.forwardSpeed *= FORWARD_DAMPING_PLAYER;
-
 
 const totalSpeed = Math.hypot(player.forwardSpeed, player.sideSpeed);
 const driftAngle = Math.atan2(player.sideSpeed, player.forwardSpeed);
@@ -3413,9 +3315,6 @@ if (mirageTurnActive && player) {
         mirageTurnMode        = "mirage"; // reset default
     }
 }
-
-
-
 
 if (player && gameState === 'racing') {
   // --- 入油 / 煞車 ---
@@ -3504,10 +3403,6 @@ const isDriftingNow = sideAbs > 2.0 && speed > maxSpeedNow * 0.2;
   updateCarPhysics(player, acc, steer, deltaTime);
 }
 
-
-
-
-
 player.speed = totalSpeed;
 
 player.driftAngle = driftAngle;
@@ -3550,13 +3445,11 @@ if (!liftingTurnActive && isDrifting)  {
 
   tireMarks.push( {
     x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L, life: TIRE_MARK_LIFE 
-  }
-);
+  });
 
 tireMarks.push( {
   x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R, life: TIRE_MARK_LIFE 
-}
-);
+});
 
 emitDustForCar(player, true, maxSpeedNow);
 
@@ -3564,13 +3457,11 @@ emitDustForCar(player, true, maxSpeedNow);
 
 player.lastTireMarkPosL =  {
   x: currentX_L, y: currentY_L 
-}
-;
+};
 
 player.lastTireMarkPosR =  {
   x: currentX_R, y: currentY_R 
-}
-;
+};
 
 if (player.speed > 0.6)  {
 
@@ -3802,8 +3693,6 @@ if (gameState === 'racing') {
     ctx.restore();
   }
 }
-
- 
 }
 
 if (player.speed > 25 || isBoosting)  {
@@ -3904,8 +3793,6 @@ if (gameState !== 'title')  {
 
 }
 
-
-
 }
 
 window.addEventListener('load', () =>  {
@@ -3930,8 +3817,7 @@ document.getElementById('startTitleBtn').onclick = () =>  {
 
   document.getElementById('mainMenu').classList.add('active');
 
-}
-;
+};
 
 document.getElementById('champBtn').onclick = () => openTrackSelect('championship');
 
@@ -3945,8 +3831,7 @@ document.getElementById('confirmTrackBtn').onclick = () =>  {
 
   buildCarList();
 
-}
-;
+};
 
 document.getElementById('confirmBtn').onclick = () =>  {
 
@@ -3956,8 +3841,7 @@ document.getElementById('confirmBtn').onclick = () =>  {
 
   playerCarImg.onload = startRace;
 
-}
-;
+};
 
 document.getElementById('backToMenuBtn').onclick = () =>  {
 
@@ -3967,8 +3851,7 @@ document.getElementById('backToMenuBtn').onclick = () =>  {
 
   raceFinished = false;
 
-}
-;
+};
 
 if ('ontouchstart' in window && navigator.maxTouchPoints > 0 && screen.width <= 1024)  {
 
@@ -4011,13 +3894,11 @@ if (pitBtn)  {
 
     }
 
-}
-;
+};
 
 pitBtn.addEventListener('touchstart', handlePitPress,  {
   passive: false 
-}
-);
+});
 
 pitBtn.addEventListener('mousedown', handlePitPress);
 
@@ -4101,7 +3982,6 @@ if (boostBtn) {
     }, {passive: false});
 }
 
-
 loadTrack(0);
 
 if (!raceFinished)  {
@@ -4110,9 +3990,6 @@ if (!raceFinished)  {
 
 }
 
-}
-);
+});
 
-}
-);
-
+});
