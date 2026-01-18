@@ -85,6 +85,16 @@ let mirageBurstDone = false;   // 是否已經做過「一次性爆衝」
 let mirageBoostLock = 0;       // 防止立刻變回普通 Boost 的鎖（frame 計）
 let mirageAfterimageAccum = 0;
 
+let cometTurnActive = false;
+let cometTurnTimer  = 0;
+let cometTurnPower  = 0;
+let cometTurnBurstDone = false;
+const COMET_TURN_DURATION = 1.2;
+
+let cometEvolutionActive = false;   // 大甩尾 Comet Evolution
+let cometEvolutionTimer = 0;
+const COMET_EVOLUTION_DURATION = 1.0;   // 甩尾火花持續時間 (秒)
+
 let isBoosting = false;
 
 let modeNotifyTimer = 0;
@@ -95,6 +105,10 @@ let liftingTurnBannerTimer = 0;           // 以 frame 計數
 const LIFTING_TURN_BANNER_DURATION = 90;  // 大約 1.5 秒 (若 60fps)
 let mirageTurnBannerTimer = 0;
 const MIRAGE_TURN_BANNER_DURATION = 90;
+let cometTurnBannerTimer = 0;
+let cometEvoBannerTimer = 0;
+const COMET_TURN_BANNER_DURATION = 90;
+const COMET_EVO_BANNER_DURATION  = 90;
 
 let boostMeter = 1.0;
 
@@ -384,7 +398,8 @@ function getTurnDisplayName(turnType) {
   switch (turnType) {
     case "lift":    return "Lifting Turn";
     case "mirage":  return "Mirage Turn";
-    case "comet":   return "Comet Turn";
+    case 'comet':      return 'Comet Turn';
+    case 'comet_evo':  return 'Comet Evolution';
     case "special": return "Special Turn";
     default:        return "None";
   }
@@ -491,6 +506,60 @@ function tryActivateMirageTurn(player, maxSpeedNow, mode = "mirage") {
   if (mode === "mirage") {
     mirageTurnBannerTimer = MIRAGE_TURN_BANNER_DURATION;
   }
+}
+
+function tryActivateCometTurn(player, maxSpeedNow) {
+    const speed = Math.abs(player.forwardSpeed || player.speed || 0);
+    const side  = Math.abs(player.sideSpeed  || 0);
+
+    const driftFactor = Math.min(1, side / (maxSpeedNow * 0.6));
+    const speedFactor = Math.min(1, speed / maxSpeedNow);
+
+    // 類 Mirage，但少少弱
+    let power = 4.0 * (0.3 + 0.7 * driftFactor * speedFactor);
+
+    cometTurnPower     = power;
+    cometTurnActive    = true;
+    cometTurnTimer     = 0;
+    cometTurnBurstDone = false;
+	cometTurnBannerTimer = COMET_TURN_BANNER_DURATION;
+
+}
+
+
+function tryActivateCometEvolution(player, steer, maxSpeedNow) {
+    if (cometEvolutionActive) return;
+    if (!player) return;
+    if (gameState !== 'racing') return;
+
+    const speedNow = Math.abs(player.forwardSpeed || player.speed || 0);
+    const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO; // 同 lifting
+
+    const side = player.sideSpeed || 0;
+
+    // 判定左右（同 lifting）
+    let dir;
+    if (Math.abs(side) > 0.5) {
+        dir = side > 0 ? -1 : 1;
+    } else if (Math.abs(steer) > 0.001) {
+        dir = steer < 0 ? -1 : 1;
+    } else if (keys['ArrowLeft']) {
+        dir = -1;
+    } else if (keys['ArrowRight']) {
+        dir = 1;
+    } else {
+        dir = 1;
+    }
+
+    cometEvolutionActive = true;
+    cometEvolutionTimer  = 0;
+
+    // 偏側甩出去＋保持速度
+    const outwardSign = (dir === 1 ? 1 : -1);
+    const outwardKick = maxSpeedNow * 0.35;
+    player.sideSpeed  += outwardSign * outwardKick;
+	cometEvoBannerTimer = COMET_EVO_BANNER_DURATION;
+
 }
 
 function drawDashboard(speed)  {
@@ -1138,6 +1207,13 @@ function updateCarSpecPanel(spec) {
   
   // ----- Team Logo (只顯示 1–5 隊) ----- //
   if (teamLogo) {
+	if (spec.teamLogo) {
+		teamLogo.style.display = "block";
+		teamLogo.src = spec.teamLogo;
+		teamLogo.onerror = () => {
+		  teamLogo.style.display = "none";
+		};
+	} else {	  
     const teamKey = getTeamKeyFromImage(spec);  // sugo / aoi / union_savior / ...
 
     // 只對指定幾隊顯示 logo
@@ -1154,6 +1230,7 @@ function updateCarSpecPanel(spec) {
       };
     } else {
       teamLogo.style.display = "none";
+      }
     }
   }
 
@@ -1174,6 +1251,9 @@ function updateCarSpecPanel(spec) {
       case "comet":
         tips = "To use <b>Comet Turn</b>, activate <b>BOOST(KEY: X)</b> while drifting through the corner.";
         break;
+      case 'comet_evo':
+        tips = 'To use <b>Comet Evolution</b>, drift hard through the corner and press <b>BOOST (KEY X)</b> to unleash a powerful sliding boost with sparks.';
+        break;		
       default:
         tips = "";
     }
@@ -1879,6 +1959,94 @@ function emitMirageAfterimage(car) {
     });
 }
 
+// 直線 Comet Turn
+function emitCometSparksStraight(car) {
+    const REAR_OFFSET = CARHEIGHT * 0.4;
+    const baseX = car.x - Math.cos(car.angle) * REAR_OFFSET;
+    const baseY = car.y - Math.sin(car.angle) * REAR_OFFSET;
+
+    for (let i = 0; i < 6; i++) {
+        const angle = car.angle + Math.PI + (Math.random() - 0.5) * 0.8;
+        const speed = 6 + Math.random() * 4;
+
+        boostParticles.push({
+            type: 'spark',
+            x: baseX,
+            y: baseY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle,
+            length: 6 + Math.random() * 6,
+            width: 2 + Math.random() * 1,
+            life: 10 + Math.random() * 10,
+            maxLife: 20,
+            gravity: 0.2,
+            color: 'rgba(255, 220, 120, 0.9)'
+        });
+    }
+}
+
+function emitCometSparksDrift(car) {
+    const REAR_OFFSET = CARHEIGHT * 0.4;
+    const sideSign = car.sideSpeed >= 0 ? 1 : -1;
+    const sideOffset = sideSign * CARWIDTH * 0.4;
+
+    const baseX = car.x - Math.cos(car.angle) * REAR_OFFSET
+                    + Math.cos(car.angle + Math.PI / 2) * sideOffset;
+    const baseY = car.y - Math.sin(car.angle) * REAR_OFFSET
+                    + Math.sin(car.angle + Math.PI / 2) * sideOffset;
+
+    for (let i = 0; i < 8; i++) {
+        const angle = car.angle + Math.PI + (Math.random() - 0.5) * 1.0;
+        const speed = 5 + Math.random() * 3;
+
+        boostParticles.push({
+            type: 'spark',
+            x: baseX,
+            y: baseY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle,
+            length: 5 + Math.random() * 5,
+            width: 6,
+            life: 12 + Math.random() * 8,
+            maxLife: 22,
+            gravity: 0.25,
+            color: 'rgba(255, 200, 80, 0.95)'
+        });
+    }
+}
+
+// === Lifting Turn：車尾風效（代替沙塵）===
+function emitLiftingTurnWind(car) {
+    const REAR_OFFSET = CARHEIGHT * 0.5;
+    const rearX = car.x + Math.cos(car.angle + Math.PI) * REAR_OFFSET;
+    const rearY = car.y + Math.sin(car.angle + Math.PI) * REAR_OFFSET;
+
+    const sideSign = (car.sideSpeed || 0) >= 0 ? 1 : -1;
+    const baseAngle = car.angle + Math.PI + sideSign * 0.4;
+
+    for (let i = 0; i < 6; i++) {
+        const dirAngle = baseAngle + (Math.random() - 0.5) * 0.3;
+        const speed = 3 + Math.random() * 2;
+        const life = 14 + Math.random() * 8;
+
+        boostParticles.push({
+            type: 'wind',   // 當成另一種 line 粒子
+            x: rearX + (Math.random() - 0.5) * 14,
+            y: rearY + (Math.random() - 0.5) * 14,
+            vx: Math.cos(dirAngle) * speed,
+            vy: Math.sin(dirAngle) * speed,
+            angle: dirAngle,
+            length: 30 + Math.random() * 10,
+            width: 6.2,
+            life,
+            maxLife: life,
+            gravity: 0,
+            color: 'rgba(210, 240, 255, 0.9)'   // 淺藍白「風」線
+        });
+    }
+}
 
 
 function updateTireWear(car, deltaTime)  {
@@ -2302,6 +2470,59 @@ else if (mirageTurnBannerTimer > 0) {
 
     ctx.restore();
 }
+
+// --- Comet Turn 中央大字 ---
+else if (cometTurnBannerTimer > 0) {
+    cometTurnBannerTimer--;
+    const t = cometTurnBannerTimer / COMET_TURN_BANNER_DURATION; // 0~1
+    const alpha = Math.min(1, t * 1.5);
+    const text = "COMET TURN!!";
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    ctx.font = 'bold 150px Rajdhani, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 外框
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(120, 0, 0, 0.9)';
+    ctx.strokeText(text, W / 2, H / 2);
+
+    // 內字：紫藍色螢光感
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.98)';
+    ctx.fillText(text, W / 2, H / 2);
+
+    ctx.restore();
+}
+
+// --- Comet Evo 中央大字 ---
+else if (cometEvoBannerTimer > 0) {
+    cometEvoBannerTimer--;
+    const t = cometEvoBannerTimer / COMET_EVO_BANNER_DURATION; // 0~1
+    const alpha = Math.min(1, t * 1.5);
+    const text = "COMET EVOLUTION!!";
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    ctx.font = 'bold 80px Rajdhani, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 外框
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(text, W / 2, H / 2);
+
+    // 內字：紫藍色螢光感
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.98)';
+    ctx.fillText(text, W / 2, H / 2);
+
+    ctx.restore();
+}
+
 
 if (isBoosting)  {
 
@@ -3316,91 +3537,178 @@ if (mirageTurnActive && player) {
     }
 }
 
+// ---- Comet Turn：類 Mirage 出彎爆衝 ----
+if (cometTurnActive) {
+    cometTurnTimer += deltaTime;
+
+    const maxSpeedNow = getCarMaxSpeed(player);
+    const speedNow    = Math.hypot(player.forwardSpeed, player.sideSpeed);
+    const sideAbs     = Math.abs(player.sideSpeed || 0);
+    const stillDrift  = sideAbs > maxSpeedNow * 0.08; // 幾多算仲 drifting
+
+    if (!stillDrift && !cometTurnBurstDone) {
+        // === 出彎 burst ===
+        const signF = Math.sign(player.forwardSpeed || player.speed || 1);
+
+        // 拉直車身
+        player.sideSpeed *= 2;
+
+        // 用 cometTurnPower 做一次性 boost
+        const extra = cometTurnPower * 5.5;   // 可調強度
+        player.forwardSpeed = signF * (speedNow + extra);
+
+        // 限上限（同 mirage 類似）
+        const maxCometSpeed = maxSpeedNow * 3.5;
+        if (Math.abs(player.forwardSpeed) > maxCometSpeed) {
+            player.forwardSpeed = signF * maxCometSpeed;
+        }
+
+        // 只係 burst 嗰下噴多啲 sparks
+        for (let i = 0; i < 3; i++) {
+            emitCometSparksStraight(player);
+        }
+
+        cometTurnBurstDone = true;
+
+    } else if (stillDrift && !cometTurnBurstDone) {
+        // 仲 drifting 階段：少量 sparks 提示
+        emitCometSparksStraight(player);
+    }
+
+    if (cometTurnTimer > COMET_TURN_DURATION || cometTurnBurstDone) {
+        cometTurnActive = false;
+        cometTurnTimer  = 0;
+    }
+}
+
+// ---- Comet Evolution：類 Lifting 大甩 + 加速 ----
+if (cometEvolutionActive) {
+    cometEvolutionTimer += deltaTime;
+
+    // 類 lifting：保持總速度，側向較多
+    const maxSpeedNow = getCarMaxSpeed(player);
+    const totalSpeed  = Math.hypot(player.forwardSpeed, player.sideSpeed) || 0.01;
+
+    // 輕微補速，唔好輸畀普通 boost 太多
+    const targetSpeed = Math.min(totalSpeed * 1.3, maxSpeedNow * 1.5);
+    const nowSpeed    = Math.hypot(player.forwardSpeed, player.sideSpeed) || 0.01;
+    const signF       = Math.sign(player.forwardSpeed || player.speed || 1);
+
+    if (nowSpeed < targetSpeed) {
+        const diff = targetSpeed - nowSpeed;
+        player.forwardSpeed += diff * 0.7 * signF;
+    }
+
+    // 讓側滑維持：減少 forward damping，side 保留
+    player.forwardSpeed *= 0.995;
+    player.sideSpeed    *= 0.99;
+
+    // 外側 sparks（你可以自已實作）
+    emitCometSparksDrift(player);
+
+    if (cometEvolutionTimer > COMET_EVOLUTION_DURATION) {
+        cometEvolutionActive = false;
+        cometEvolutionTimer  = 0;
+    }
+}
+
 if (player && gameState === 'racing') {
-  // --- 入油 / 煞車 ---
-  let acc = 0;
-  if (keys['ArrowUp'])   acc =  0.4;
-  if (keys['ArrowDown']) acc = -0.1;
+	// --- 入油 / 煞車 ---
+	let acc = 0;
+	if (keys['ArrowUp'])   acc =  0.4;
+	if (keys['ArrowDown']) acc = -0.1;
 
-  // --- 轉向輸入 ---
-  let steer = 0;
-  if (keys['ArrowLeft'])  steer = -0.1;
-  if (keys['ArrowRight']) steer =  0.1;
+    // --- 轉向輸入 ---
+	let steer = 0;
+	if (keys['ArrowLeft'])  steer = -0.1;
+	if (keys['ArrowRight']) steer =  0.1;
 
-  // --- 基本狀態 ---
-  const maxSpeedNow  = getCarMaxSpeed(player);
-  const speed        = Math.abs(player.forwardSpeed || player.speed || 0);
-// 新 drift 判斷（專俾 Special 用）
-const sideAbs = Math.abs(player.sideSpeed || 0);
-const isDriftingNow = sideAbs > 2.0 && speed > maxSpeedNow * 0.2;
-  
-  const turnType = getCarTurnType(player.spec);
+	// --- 基本狀態 ---
+	const maxSpeedNow  = getCarMaxSpeed(player);
+	const speed        = Math.abs(player.forwardSpeed || player.speed || 0);
+	// 新 drift 判斷（專俾 Special 用）
+	const sideAbs = Math.abs(player.sideSpeed || 0);
+	const isDriftingNow = sideAbs > 2.0 && speed > maxSpeedNow * 0.2;
+	  
+	const turnType = getCarTurnType(player.spec);
 
-  if (mirageBoostLock > 0) mirageBoostLock--;  // 每 frame 減一
+	if (mirageBoostLock > 0) mirageBoostLock--;  // 每 frame 減一
 
-  // ---- Special Turn + Boost 處理 ----
-  let nextIsBoosting = false;
-  const spaceDown = !!keys['Space'];
 
-  if (spaceDown && !liftingTurnActive && !mirageTurnActive) {
-	const needSpeed = maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO;
+	// ---- Special Turn Boost ----
+	let nextIsBoosting = false;
+	const spaceDown = !!keys.Space;
 
-    let usedSpecial = false;
+	if (spaceDown && !liftingTurnActive && !mirageTurnActive) {
+		const turnType = getCarTurnType(player.spec);
+		const speed = Math.abs(player.forwardSpeed || player.speed || 0);
+		const isDriftingNow = Math.abs(player.sideSpeed || 0) > 2.0 && speed > maxSpeedNow * 0.2;
 
-    // Lifting Turn：drift 中 + 速度達標 → 交俾 tryActivateLiftingTurn 決定方向
-    if (turnType === "lift" &&
-        speed >= maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO &&
-        isDriftingNow) {
+		let usedSpecial = false;
 
-      tryActivateLiftingTurn(player, steer, maxSpeedNow);
-      usedSpecial = true;
-    }
+		// Lifting Turn
+		if (turnType === 'lift' &&
+			speed > maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO &&
+			isDriftingNow) {
+			tryActivateLiftingTurn(player, steer, maxSpeedNow);
+			usedSpecial = true;
+		}
+		// Mirage Turn
+		else if (turnType === 'mirage' &&
+				 speed > maxSpeedNow * 0.50 &&
+				 isDriftingNow) {
+			tryActivateMirageTurn(player, maxSpeedNow, "mirage");
+			usedSpecial = true;
+		}
+		// Special (Mirage)
+		else if (turnType === 'special' &&
+				 speed > maxSpeedNow * 0.50 &&
+				 isDriftingNow) {
+			tryActivateMirageTurn(player, maxSpeedNow, "special");
+			usedSpecial = true;
+		}
+		// Comet Turn
+		else if (turnType === 'comet' &&
+				 speed > maxSpeedNow * 0.45 &&
+				 isDriftingNow) {
+			tryActivateCometTurn(player, maxSpeedNow);
+			usedSpecial = true;    // 你而家設定 Comet 都係「取代普通 boost」
+		}
+		// Comet Evolution
+		else if (turnType === 'comet_evo' &&
+				 speed > maxSpeedNow * LIFTING_TURN_MIN_SPEED_RATIO &&
+				 isDriftingNow) {
+			tryActivateCometEvolution(player, steer, maxSpeedNow);
+			usedSpecial = true;
+		}
 
-    // Mirage Turn
-    else if (turnType === "mirage" &&
-             speed >= maxSpeedNow * 0.50 &&
-             isDriftingNow) {
+		// 普通直線 boost，只喺冇用到任何 special turn 情況下生效
+		const wantsForward = keys.ArrowUp || touch.up;
+		const canBoostNow  = wantsForward && boostMeter > 0 && boostCooldown === 0;
 
-      tryActivateMirageTurn(player, maxSpeedNow, "mirage");
-      usedSpecial = true;
-    }
+		if (!usedSpecial && canBoostNow && !mirageTurnActive) {
+			nextIsBoosting = true;
+		}
 
-    // Special Turn（強化版 Mirage）
-    else if (turnType === "special" &&
-             speed >= maxSpeedNow * 0.50 &&
-             isDriftingNow) {
+		// Lifting / Mirage Active 期間一律關普通 boost
+		if (liftingTurnActive || mirageTurnActive) {
+			nextIsBoosting = false;
+		}
 
-      tryActivateMirageTurn(player, maxSpeedNow, "special");
-      usedSpecial = true;
-    }
+		// 再將「不能物理上 boost」情況全部清掉
+		if (!canBoostNow) {
+			nextIsBoosting = false;
+		}
+	} else {
+		// 冇撳住 X / Space 嘅 frame，直接唔 boost
+		nextIsBoosting = false;
+	}
 
-    // 將來 Comet Turn
-    else if (turnType === "comet") {
-      tryActivateCometTurn(player, maxSpeedNow);
-      usedSpecial = true;
-    }
+	// ★ 用 nextIsBoosting 覆蓋，而唔係永遠黐住 true
+	isBoosting = nextIsBoosting;
 
-    // 呢 frame 冇任何 Special Turn → 視為普通 Boost
-    if (!usedSpecial) {
-      if (boostMeter > 0 &&
-          boostCooldown === 0 &&
-          !mirageTurnActive) {
-
-        nextIsBoosting = true;
-      }
-    }
-  }
-
-  // 進行中嘅 Lifting / Mirage 一律禁止 Boost
-  if (liftingTurnActive || mirageTurnActive) {
-    nextIsBoosting = false;
-  }
-
-  // 最後更新 isBoosting
-  isBoosting = nextIsBoosting;
-
-  // 之後先行物理
-  updateCarPhysics(player, acc, steer, deltaTime);
+	// 之後先行物理
+	updateCarPhysics(player, acc, steer, deltaTime);
 }
 
 player.speed = totalSpeed;
@@ -3439,21 +3747,30 @@ const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R
 
 const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
 
-if (!liftingTurnActive && isDrifting)  {
+if (isDrifting) {
+    const TIREMARKLIFE = 60;
 
-  const TIRE_MARK_LIFE = 60;
+    // 胎印照畫（無論係普通甩尾定 Lifting Turn）
+    tireMarks.push({
+        x1: lastX_L, y1: lastY_L,
+        x2: currentX_L, y2: currentY_L,
+        life: TIREMARKLIFE
+    });
+    tireMarks.push({
+        x1: lastX_R, y1: lastY_R,
+        x2: currentX_R, y2: currentY_R,
+        life: TIREMARKLIFE
+    });
 
-  tireMarks.push( {
-    x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L, life: TIRE_MARK_LIFE 
-  });
-
-tireMarks.push( {
-  x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R, life: TIRE_MARK_LIFE 
-});
-
-emitDustForCar(player, true, maxSpeedNow);
-
+    if (!liftingTurnActive) {
+        // 普通甩尾：用沙塵
+        emitDustForCar(player, true, maxSpeedNow);
+    } else {
+        // Lifting Turn 期間：用風效代替
+        emitLiftingTurnWind(player);
+    }
 }
+
 
 player.lastTireMarkPosL =  {
   x: currentX_L, y: currentY_L 

@@ -50,11 +50,12 @@ const CARSPECS = [
   { image: "5. MISSING LINK/STRATMISSIONNEL_MS-3B.png", acceleration: 4.9, handling: 0.8 , hasAero: false, hasBoost: false, turn: "special", driver: "Henri"},
   { image: "5. MISSING LINK/Asurada_GST.png", acceleration: 4.8, handling: 0.8 , hasAero: false, hasBoost: false, turn: "none", driver: "Osamu"},  
   
-  { image: "6. OTHERS SINGLE RACER/Albatrander_602.png", acceleration: 4.6, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Otomo"},
-  { image: "6. OTHERS SINGLE RACER/EL-CONDOL_B-15.png", acceleration: 4.5, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Lopes"},
-  { image: "6. OTHERS SINGLE RACER/SILENT_SCREAMER-β.png", acceleration: 4.6, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Heinel"},
-  { image: "6. OTHERS SINGLE RACER/Stampede_RS.png", acceleration: 4.7, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Gudelhian"},
-  { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.3, handling: 0.8 , hasAero: true, hasBoost: true, turn: "special", driver: "Toma"}
+  { image: "6. OTHERS SINGLE RACER/Albatrander_602.png", acceleration: 4.6, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Otomo", teamLogo: "team/single/DDT.webp"},
+  { image: "6. OTHERS SINGLE RACER/EL-CONDOL_B-15.png", acceleration: 4.5, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Lopes", teamLogo: "team/single/AGS_Insignia.webp"},
+  { image: "6. OTHERS SINGLE RACER/SILENT_SCREAMER-β.png", acceleration: 4.6, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Heinel", teamLogo: "team/single/SGM.webp"},
+  { image: "6. OTHERS SINGLE RACER/Stampede_RS.png", acceleration: 4.7, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Gudelhian", teamLogo: "team/single/Star_Stampede.webp"},
+  { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.2, handling: 0.7 , hasAero: true, hasBoost: true, turn: "comet", driver: "Toma",teamLogo: "team/single/Phoenix.webp"},
+   { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.3, handling: 0.8 , hasAero: true, hasBoost: true, turn: "comet_evo", driver: "Toma", teamLogo: "team/single/Phoenix.webp"}
 ];
 
 
