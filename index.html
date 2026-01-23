@@ -3,12 +3,23 @@
 <head>
     <meta charset="utf-8">
     <title>Cyber Formula Mini Race</title>
-    <meta name="viewport" content="width=device-width, initial-scale=0.5, maximum-scale=0.5, user-scalable=no">
+    <meta name="viewport"
+		content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
     <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Orbitron:wght@900&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; background: #2a2a2a; overflow: hidden; font-family: Rajdhani, sans-serif; color: #fff; }
-        canvas#game { display: block; background: transparent; margin: 20px auto; border: 3px solid #333; z-index: 1; }
-		
+        body {margin: 0;  padding: 0;  width: 100%;  height: 100%; background: #2a2a2a; overflow: hidden; font-family: Rajdhani, sans-serif; color: #fff; }
+        canvas#game {
+		  position: absolute;
+		  left: 0;
+		  top: 0;
+		  width: 100%;
+		  height: 100%;
+		  background: transparent;
+		  border: 0;          /* 去掉黑框，如想要可以改做 box-shadow */
+		  display: block;
+		  z-index: 1;
+		}
 		/* 1. 改為藍天背景 */
 		#titleScreen {
 			position: fixed;
@@ -50,35 +61,42 @@
 
 		/* 3. 調整副標題樣式以配合藍天背景 */
 		#titleScreen h2 {
-			font-family: 'Rajdhani', sans-serif;
-			font-size: 50px;
-			/* 改為白色文字 */
-			color: #ffffff;
-			margin: 0 0 40px 0;
-			letter-spacing: 8px;
-			/* 改用深藍色描邊效果，而非霓虹發光，更像遊戲介面 */
-			text-shadow: 
-				3px 3px 0px #003366, 
-				-3px -3px 0px #003366,
-				3px -3px 0px #003366,
-				-3px 3px 0px #003366;
-			font-weight: 700;
+		  font-family: 'Rajdhani', sans-serif;
+		  font-size: clamp(24px, 5vw, 60px);  /* 細螢幕縮細，大螢幕最多 60 */
+		  color: #00ffea;
+		  text-shadow: 0 0 20px #00ffea;
+		  margin-top: -10px;
+		  letter-spacing: 0.8vw;              /* 用 vw 取代死 10px */
 		}
 
-
-		#titleScreen h2 { 
-			font-family: 'Rajdhani', sans-serif; font-size: 60px; color: #00ffea; 
-			text-shadow: 0 0 20px #00ffea; margin-top: -10px; letter-spacing: 10px; 
+		#checkered {
+		  width: min(90vw, 600px);
+		  height: auto;
+		  aspect-ratio: 15 / 4;               /* 保持原來比例 */
+		  display: grid;
+		  grid-template-columns: repeat(15, 1fr);
+		  grid-template-rows: repeat(4, 1fr);
+		  border: 0.8vw solid #fff;
+		  box-shadow: 0 0 3vw rgba(255,255,255,0.8);
+		  margin: 4vh 0;
 		}
-
-       
-       
-        #checkered { width: 600px; height: 140px; display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(4, 1fr); border: 8px solid #fff; box-shadow: 0 0 50px rgba(255,255,255,0.8); margin: 50px 0; }
         #checkered div { width: 100%; height: 100%; background: #000; }
         #checkered div:nth-child(odd) { background: #fff; }
         #checkered div:nth-child(even) { background: #000; }
         
-        #startTitleBtn { background: linear-gradient(45deg, #ff1b6b, #ff8c00); color: #fff; padding: 25px 90px; font-size: 48px; border: none; border-radius: 60px; cursor: pointer; transition: 0.4s; box-shadow: 0 15px 40px rgba(255,27,107,0.5); font-weight: 700; letter-spacing: 5px; }
+		#startTitleBtn {
+		  background: linear-gradient(45deg, #ff1b6b, #ff8c00);
+		  color: #fff;
+		  padding: 1.5vh 8vw;
+		  font-size: clamp(18px, 4vw, 32px);
+		  border: none;
+		  border-radius: 60px;
+		  cursor: pointer;
+		  transition: 0.4s;
+		  box-shadow: 0 1.5vh 4vw rgba(255,27,107,0.5);
+		  font-weight: 700;
+		  letter-spacing: 0.4vw;
+		}
         #startTitleBtn:hover { transform: scale(1.1); }
         
         #finishScreen { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 999; }
@@ -86,40 +104,100 @@
         #finalPos { font-size: 60px; margin: 30px 0; text-shadow: 0 0 30px #fff; }
         #backToMenuBtn { background: #00ff41; color: #000; padding: 25px 100px; font-size: 45px; border: none; border-radius: 60px; cursor: pointer; font-weight: 700; }
         
-        #gameContainer { position: relative; width: 1000px; height: 1600px; margin: 20px auto; }
-        canvas { z-index: 1; }
-        #hud, #lapHud, #posHud, #speedHud, #countdown { z-index: 10; position: absolute; font-weight: bold; }
-		
-		/* 隱藏舊的文字 HUD，準備用 Canvas 畫 */
-		#speedHud { display: none; } 
-		
-		/* 新增儀表板 Canvas */
-		#dashboardCanvas {
-			position: absolute;
-			bottom: 330px;
-			right: 30px;
-			z-index: 20;
-			background: transparent; 
-			pointer-events: none; 
+        #gameContainer {
+		  position: relative;
+		  width: 100vw;
+		  height: 100vh;
+		  margin: 0;
+		  overflow: hidden;
 		}
+        canvas { z-index: 1; }
+        #hud, #lapHud, #posHud, #countdown, #tireMonitorContainer { z-index: 10; position: absolute; font-weight: bold; }
 		
-        #hud { top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 12px; font: 22px Arial; }
-        #lapHud { top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 12px 35px; border-radius: 12px; font: 32px Arial; }
-        #posHud { top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 10px 25px; border-radius: 12px; font: 26px Arial; }
-        #speedHud { bottom: 240px; right: 30px; background: rgba(255,0,0,0.8); padding: 20px 40px; border-radius: 25px; font: 60px bold Arial; text-shadow: 0 0 20px #ff0000; }
-        #boostBarContainer { 
-        position: absolute; 
-        bottom: 280px; 
-        right: 30px; 
-        width: 350px; 
-        height: 24px; 
-        background: rgba(0,0,0,0.7); 
-        border-radius: 12px; 
-        overflow: hidden; 
-        z-index: 10; 
-        border: 2px solid rgba(255,255,255,0.4);
-        box-shadow: 0 2px 15px rgba(0,0,0,0.6);
-        }
+		
+		/* --- TOP HUD BAR --- */
+		#hud, #lapHud, #posHud {
+			position: absolute;
+			top: 10px;
+			z-index: 10;
+			background: rgba(0,0,0,0.7);
+			padding: 8px 15px;
+			border-radius: 8px;
+			pointer-events: none;
+		}
+		#hud { left: 10px; font-size: 14px; }
+		#lapHud { left: 50%; transform: translateX(-50%); font-size: 18px; border: 2px solid #555; }
+		#posHud { right: 10px; font-size: 14px; }
+		
+		#pitHudPrompt {
+		  position: absolute;
+		  top: 12vh;
+		  right: 3vw;
+		  padding: 10px 20px; /* Bigger padding */
+		  font-size: 3vh;     /* Bigger font */
+		  font-weight: bold;
+		  color: #ffffff !important; /* Force white text */
+		  background: rgba(0, 0, 0, 0.85);
+		  border: 3px solid #00ffff;
+		  border-radius: 10px;
+		  display: none;
+		  z-index: 1000; /* FORCE it to be on top of everything */
+		  pointer-events: none;     /* Don't block clicks */
+		}
+
+		/* --- LEFT UI COLUMN (Minimap + Tire) --- */
+		#minimapCanvas {
+			position: absolute;
+			left: 10px;
+			top: 330px; /* Below the AI Avatar */
+			width: 25vw;
+			max-width: 200px;
+			height: auto;
+			z-index: 20;
+			border: 2px solid rgba(255,255,255,0.2);
+			background: rgba(0,0,0,0.3);
+		}
+
+
+		#tireMonitorContainer {
+			position: absolute;
+			left: 10px;
+			top: 45vh;
+			width: 60px;
+			height: 60px;
+			z-index: 20;
+		}
+
+		/* --- RIGHT UI COLUMN (Dashboard + Boost) --- */
+		#rightUI {
+			position: absolute;
+			right: 10px;
+			bottom: 4vh;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+			gap: 10px;
+			z-index: 20;
+			pointer-events: none;
+		}
+
+		#dashboardCanvas {
+			width: 35vw;
+			max-width: 280px;
+			height: auto;
+		}
+
+		#boostBarContainer { 
+			position: relative; /* Changed from absolute to flow inside rightUI */
+			width: 35vw;
+			max-width: 250px;
+			height: 12px;
+			background: rgba(0,0,0,0.7); 
+			border-radius: 6px; 
+			overflow: hidden; 
+			border: 2px solid rgba(255,255,255,0.4);
+		}
+
         #boostBar { 
         height: 100%; 
         width: 100%; 
@@ -128,7 +206,25 @@
         transform: scaleX(1); 
         transition: transform 0.1s ease-out;
         box-shadow: 2px 0 10px rgba(255, 100, 100, 0.5);
-      }
+        }
+		
+		/* --- MOBILE SPECIFIC FIXES --- */
+		@media screen and (orientation: portrait) {
+			/* In Portrait, move UI up so it doesn't hide under the mobile buttons */
+			#rightUI { bottom: 28vh; }
+			#tireMonitorContainer { top: 45vh; }
+			#minimapCanvas { top: 200px; width: 30vw; }
+			
+			/* Make top HUD smaller so they don't overlap in center */
+			#hud, #posHud { font-size: 10px; padding: 4px 8px; }
+			#lapHud { font-size: 14px; }
+		}
+
+		@media screen and (max-width: 600px) {
+			/* On very small phones, hide the track name HUD to save space */
+			#hud { display: none; }
+		}		
+		
 		#countdown {
 			position: absolute;
 			top: 50%;
@@ -144,8 +240,23 @@
         
         .menu { display: none; position: fixed; inset: 0; background: #000; flex-direction: column; align-items: center; overflow-y: auto; z-index: 99; padding: 40px 20px 120px; }
         .menu.active { display: flex; }
-        .menu h1 { font-family: Orbitron, sans-serif; font-size: 70px; margin: 20px 0; text-shadow: 0 0 30px #00ffff; }
+		.menu h1 {
+		  font-family: Orbitron, sans-serif;
+		  font-size: clamp(26px, 5vw, 60px);
+		  margin: 2vh 0;
+		  text-shadow: 0 0 30px #00ffff;
+		}
         
+		/* FORMULA SELECT 標題貼頂，不隨中間內容捲走 */
+		#carMenu h1 {
+		  position: sticky;
+		  top: 0;
+		  z-index: 2;
+		  margin: 0 0 1.5vh 0;
+		  padding-bottom: 0.8vh;
+		  background: #000;  /* 同 menu 底色，避免和下面重疊 */
+		}
+		
 		/* 4. 菜單畫面 (Mode Select) 視覺修正 */
 				#mainMenu.menu {
 					/* 覆寫 .menu 的背景為藍天漸層 */
@@ -178,71 +289,265 @@
 					font-weight: 700;
 				}
 
-				.btn { background: linear-gradient(45deg, #667eea, #764ba2); padding: 18px 50px; margin: 15px; font-size: 36px; border: none; border-radius: 15px; cursor: pointer; width: 80%; max-width: 500px; transition: 0.3s; box-shadow: 0 10px 30px rgba(102,126,234,0.4); }
+				.btn {
+				  background: linear-gradient(45deg, #667eea, #764ba2);
+				  padding: 1.6vh 5vw;
+				  margin: 1.2vh;
+				  font-size: clamp(18px, 3.5vw, 28px);
+				  border: none;
+				  border-radius: 15px;
+				  cursor: pointer;
+				  width: min(80vw, 500px);
+				  transition: 0.3s;
+				  box-shadow: 0 10px 30px rgba(102,126,234,0.4);
+				}
 				.btn:hover { transform: scale(1.05); box-shadow: 0 15px 40px rgba(102,126,234,0.6); }
         
-        /* Track Select */
-        #trackSelect .track-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 25px; width: 100%; max-width: 1000px; margin: 30px 0; }
-        .track-card { background: #111; padding: 20px; border-radius: 15px; cursor: pointer; transition: 0.3s; border: 4px solid transparent; font-size: 40px; text-align: center; }
-        .track-card:hover { transform: scale(1.05); background: #222; }
-        .track-card.selected { border: 4px solid #00ff41; background: #003300 !important; }
-        .track-card img { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 10px; }
-        
-		#carMenu .container {
-		  max-width: 1000px;
-		  width: 95%;
-		  margin: 0 auto;
-		  padding: 20px 0;
-		  display: flex;
-		  align-items: flex-start;
+		#trackSelect h1 {
+		  position: sticky;
+		  top: 0;
+		  z-index: 2;
+		  margin: 2vh 0 1.5vh 0;
+		  background: #000;              /* 底色防止字同下面 overlap */
+		}
+
+		/* Track Grid：有高度限制，只係呢度上下捲 */
+		#trackSelect .track-grid {
+		  display: grid;
+		  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 		  gap: 20px;
+		  width: min(95vw, 1100px);
+		  margin: 0 auto;
+
+		  /* ⭐ 關鍵：限制高度，track 圖就唔會被剪走 */
+		  max-height: calc(100vh - 220px);   /* 視窗高 - 標題/按鈕/上下 padding，數值可微調 */
+		  overflow-y: auto;                  /* 只喺呢度 scroll */
 		}
 
+		.track-card {
+		  background: #111;
+		  padding: 20px;
+		  border-radius: 15px;
+		  cursor: pointer;
+		  transition: 0.3s;
+		  border: 4px solid transparent;
+		  font-size: clamp(15px, 2.5vw, 28px);
+		  text-align: center;
+		}
+		.track-card:hover { transform: scale(1.05); background: #222; }
+		.track-card.selected { border: 4px solid #00ff41; background: #003300 !important; }
+		.track-card img { width: 80%; max-height: 18vh; max-width: 10vh; object-fit: contain; border-radius: 10px; }
+        
+
+
+
+		/* FORMULA SELECT Layout：左車卡，右 Spec Panel */
+		#carMenu .container {
+		  width: 100%;
+		  max-width: 1100px;
+		  margin: 0 auto;
+		  padding: 2vh 1vw 0;
+
+		  display: grid;
+		  grid-template-columns: 1.1fr 1.6fr;  /* 左窄右闊 */
+		  column-gap: 0.5vw;
+		  align-items: flex-start;
+
+		  /* ⭐ 固定中間高度，只係內部元素捲 */
+		  max-height: calc(100vh - 160px);  /* 視窗高 - 標題 + 底 padding，可自行微調 */
+		}
+
+		/* 左邊車卡區：只有呢度上下捲 */
 		#carList {
-		  flex: 3;
+		  min-width: 0;
+		  height: 100%;
+		  overflow-y: auto;
 		}
 
+		/* 車名 */
+		.car-list-container .car-name {
+		  margin-top: 0.5vh;
+		  font-family: 'Rajdhani', sans-serif;
+		  color: #ccc;
+		  font-size: clamp(14px, 1.8vw, 22px);
+		  letter-spacing: 0.08em;
+		}
+
+		/* 如果你想手機再細啲，可以加額外 media query */
+		@media (max-width: 768px) {
+		  .car-list-container .car-name {
+			font-size: clamp(10px, 3vw, 14px);
+		  }
+		}
+
+		/* 右邊 Spec Panel（desktop：sticky 黐住視窗） */
 		#carSpecPanel {
-		  flex: 2;
+		  min-width: 0;
 		  background: rgba(0, 0, 0, 0.75);
 		  border-radius: 15px;
-		  padding: 16px 20px;
+		  padding: 1.5vh 1.5vw;
 		  border: 2px solid rgba(0, 255, 255, 0.4);
 		  box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
 
-		  position: sticky;
-		  top: 120px;   /* 視乎你 FORMULA SELECT 標題高度微調 */
-		}
-
-		/* Spec 每一行 */
-		.spec-row {
 		  display: flex;
-		  align-items: center;
-		  margin-bottom: 10px;
-		  font-size: 20px;
+		  flex-direction: column;
+
+		  position: sticky;                   /* ⭐ 黐 viewport，而唔係 menu 自己 */
+		  top: 90px;                          /* 視覺上喺 FORMULA SELECT 標題下少少 */
+		  height: calc(100vh - 140px);        /* 大約由標題下方拉到 browser 底 */
+		  max-height: none;
+		  overflow-y: auto;                   /* 內容太長時 panel 自己捲 */
 		}
 
-		/* 左邊文字 */
+		/* Confirm 按鈕永遠喺 panel 底 */
+		#confirmBtn {
+		  margin-top: 2vh;
+		  align-self: stretch;
+		  max-width: 15vw;
+		}
+
+		/* 細螢幕（例如直向手機）：右邊用 fixed，唔再靠 sticky */
+		@media (max-width: 700px) {
+		  /* 左右 grid 保持兩欄，但左邊留位畀 fixed panel，唔好俾佢遮晒 */
+		  #carMenu .container {
+			grid-template-columns: 1fr 1fr;
+			column-gap: 1.2vw;
+			padding-right: 48vw;        /* ⭐ 後面空位，避免被右邊 panel 蓋住 */
+		  }
+
+		  /* 左邊車卡可以自己捲 */
+		  #carList {
+			overflow-y: auto;
+			max-height: calc(100vh - 160px);
+		  }
+
+		  /* 右邊 Spec Panel 完全釘死喺 viewport 右邊 */
+		  #carSpecPanel {
+			position: fixed;            /* ⭐ 由 sticky → fixed */
+			top: 12vh;                  /* 視覺上喺 FORMULA SELECT 標題下面 */
+			right: 4vw;
+			width: min(46vw, 420px);    /* 右欄闊度，大約一半畫面 */
+			height: calc(100vh - 16vh); /* 由 top 開始拉到底 */
+			overflow-y: auto;
+			z-index: 1000;              /* 壓住後面左欄 */
+		  }
+
+		  /* Confirm 按鈕保持喺 panel 底 */
+		  #confirmBtn {
+			align-self: stretch;
+			max-width: 100%;
+		  }
+
+		  /* 細機左邊卡片單 column + 圖再細啲 */
+		  .car-list-container {
+			grid-template-columns: 1fr;
+		  }
+
+		  .car-list-container img {
+			max-height: 14vh;
+		  }
+		}
+
+
+
+		/* 車隊標題 */
+		.team-header {
+		  font-family: 'Orbitron', sans-serif;
+		  font-size: clamp(18px, 3.2vw, 28px);
+		  color: #00ffea;
+		  text-shadow: 0 0 10px #00ffea;
+		  margin: 3vh 0 1.5vh;
+		  border-bottom: 2px solid rgba(0,255,234,0.3);
+		  padding-bottom: 0.6vh;
+		  text-align: left;
+		}
+
+		/* 左邊車卡 Grid */
+		.car-list-container {
+		  display: grid;
+		  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		  gap: 1.6vh;
+		  list-style: none;
+		  padding: 0;
+		  margin: 0;
+		}
+
+		.car-list-container li {
+		  background: #222;
+		  padding: 1vh 0.8vw;
+		  border-radius: 15px;
+		  cursor: pointer;
+		  transition: 0.2s;
+		  border: 4px solid transparent;
+		  text-align: center;
+		  font-size: clamp(5px, 1.8vw, 10px); 
+		}
+
+		.car-list-container li:hover { 
+		  transform: scale(1.06); 
+		  background: #333; 
+		}
+
+		.car-list-container li.selected { 
+		  border: 4px solid #0f0; 
+		  background: #003300 !important; 
+		}
+
+		.car-list-container img {
+		  width: 100%;
+		  max-height: 10vh;
+		  object-fit: contain;
+		}
+
+		/* ===== 右邊 SPEC：標題 + SPEED / CONTROL Bar + AERO / TURN ===== */
+
+		#specCarName {
+		  font-size: clamp(10px, 5vw, 15px);
+		  margin-top: 0.1vh;      /* 上面收窄 */
+		  margin-bottom: 0.1vh;   /* 下面收窄 */
+		  line-height: 1.0;       /* 行高貼身啲 */
+		}
+
+		/* 整個一塊：SPEED / CONTROL */
+		.spec-block {
+		  margin-top: 1.2vh;
+		}
+
+		/* 標題行：左邊文字 + 右邊數值 */
+		.spec-title-row {
+		  display: flex;
+		  align-items: baseline;
+		  justify-content: space-between;
+		  margin-bottom: 0.3vh;
+		  font-size: clamp(12px, 1.7vw, 18px);
+		}
+
+		/* 左邊 "SPEED" / "CONTROL" label */
 		.spec-label {
-		  width: 80px;
 		  text-transform: uppercase;
-		  letter-spacing: 1px;
+		  letter-spacing: 0.1em;
 		  color: #cccccc;
 		}
 
-		/* 中間 bar 背景：要有最小寬度，避免被擠到 0 */
+		/* 右邊 "X/10" */
+		.spec-value {
+		  font-weight: bold;
+		  min-width: 40px;
+		  text-align: right;
+		}
+
+		/* Bar 部份（獨立一行） */
 		.spec-bar-bg {
-		  flex: 1;
-		  min-width: 120px;          /* ★ 關鍵：至少 120px */
-		  height: 14px;
+		  width: 100%;
+		  height: 1.6vh;
+		  min-height: 8px;
+		  max-height: 16px;
 		  background: #222;
 		  border-radius: 8px;
-		  margin: 0 8px;
 		  overflow: hidden;
 		  border: 1px solid rgba(255, 255, 255, 0.2);
 		}
 
-		/* 內層填充 bar */
 		.spec-bar-fill {
 		  height: 100%;
 		  width: 0%;
@@ -250,28 +555,33 @@
 		  transition: width 0.2s ease-out;
 		}
 
-		/* 右側 “X/10” 數字 */
-		.spec-value {
-		  width: 55px;
-		  text-align: right;
-		  font-weight: bold;
+		/* AERO / TURN 純文字行 */
+		.spec-text-row {
+		  display: flex;
+		  justify-content: space-between;
+		  align-items: baseline;
+		  margin-top: 0.8vh;
+		  font-size: clamp(12px, 1.7vw, 18px);
 		}
 
-		/* 整個 Driver 區 */
-		#specDriverSection {
-		  margin-top: 18px;
-		  padding-top: 12px;
-		  border-top: 1px solid rgba(255, 255, 255, 0.15);
+		.spec-plain-value {
+		  font-weight: 600;
+		  color: #ffffff;
+		}
 
+		/* Driver 區 */
+		#specDriverSection {
+		  margin-top: 2vh;
+		  padding-top: 1.2vh;
+		  border-top: 1px solid rgba(255, 255, 255, 0.15);
 		  display: flex;
 		  align-items: center;
-		  gap: 12px;
+		  gap: 1vw;
 		}
 
-		/* Avatar 圓框 */
 		#specDriverAvatarWrap {
-		  width: 180px;
-		  height: 180px;
+		  width: clamp(70px, 18vw, 120px);
+		  height: clamp(70px, 18vw, 120px);
 		  border-radius: 50%;
 		  overflow: hidden;
 		  border: 2px solid rgba(0, 255, 255, 0.6);
@@ -286,40 +596,38 @@
 		  object-fit: cover;
 		}
 
-		/* 文字部份 */
 		#specDriverText {
 		  display: flex;
 		  flex-direction: column;
 		}
 
 		#specDriverLabel {
-		  font-size: 45px;
-		  letter-spacing: 2px;
+		  font-size: clamp(12px, 2.1vw, 18px);
+		  letter-spacing: 0.12em;
 		  color: #aaaaaa;
 		}
 
 		#specDriverName {
-		  font-size: 40px;
+		  font-size: clamp(13px, 2.4vw, 20px);
 		  font-weight: 700;
 		  color: #ffffff;
 		  text-shadow: 0 0 8px rgba(0, 255, 255, 0.7);
 		  text-transform: uppercase;
 		}
 
-		/* Badge 列：在 Driver 下面留少少空位 */
+		/* Badge */
 		#specBadgeRow {
-		  margin-top: 14px;
+		  margin-top: 1.4vh;
 		  display: flex;
 		  flex-wrap: wrap;
-		  gap: 8px;
+		  gap: 0.6vw;
 		}
 
-		/* 基本 badge 造型 */
 		.spec-badge {
-		  font-size: 20x;
-		  letter-spacing: 2px;
+		  font-size: clamp(9px, 1.5vw, 13px);
+		  letter-spacing: 0.12em;
 		  text-transform: uppercase;
-		  padding: 6px 15px;
+		  padding: 0.4vh 1.2vw;
 		  border-radius: 999px;
 		  border: 1px solid rgba(0, 255, 255, 0.6);
 		  color: #00ffff;
@@ -328,63 +636,33 @@
 		  white-space: nowrap;
 		}
 
-		/* 針對不同類型微調顏色（可選） */
-		.spec-badge.team {
-		  border-color: #ffdd33;
-		  color: #ffdd33;
-		  box-shadow: 0 0 10px rgba(255, 221, 51, 0.5);
-		}
-
-		.spec-badge.aero-on {
-		  border-color: #00ff88;
-		  color: #00ff88;
-		}
-
-		.spec-badge.aero-off {
-		  border-color: #888888;
-		  color: #bbbbbb;
-		  box-shadow: none;
-		  background: rgba(40,40,40,0.8);
-		}
-
-		.spec-badge.boost-off {
-		  border-color: #ff5555;
-		  color: #ff8888;
-		}
-
-		.spec-badge.turn-special {
-		  border-color: #b080ff;
-		  color: #e0c0ff;
-		}
-
-		/* Team Logo 區：同 badge 拉開少少 */
+		/* Team Logo */
 		#specTeamLogoSection {
-		  margin-top: 50px;
-		  padding-top: 10px;
+		  margin-top: 3vh;
+		  padding-top: 1vh;
 		  border-top: 1px solid rgba(255, 255, 255, 0.12);
 		  text-align: center;
 		}
 
-		/* Logo 圖本身 */
 		#specTeamLogo {
-		  max-width: 400px;
-		  max-height: 400px;
+		  max-width: clamp(120px, 32vw, 220px);
+		  max-height: clamp(120px, 32vw, 220px);
 		  object-fit: contain;
 		  opacity: 0.9;
 		  filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.55));
 		}
 
-		/* Special Turn Tips */
+		/* Turn Tips */
 		#specTurnTips {
-		  margin-top: 14px;
-		  padding: 10px 12px;
-		  font-size: 25px;
+		  margin-top: 1.4vh;
+		  padding: 1vh 1.2vw;
+		  font-size: clamp(11px, 1.9vw, 16px);
 		  line-height: 1.5;
 		  color: #cccccc;
 		  background: rgba(0, 255, 255, 0.08);
 		  border-left: 3px solid rgba(0, 255, 255, 0.6);
 		  border-radius: 4px;
-		  display: none;  /* 預設隱藏，JS 有 turn 先顯示 */
+		  display: none;
 		}
 
 		#specTurnTips .tips-title {
@@ -393,74 +671,23 @@
 		  margin-right: 6px;
 		}
 
-
-        
-        /* 新增：車隊標題樣式 */
-        .team-header {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 40px;
-          color: #00ffea;
-          text-shadow: 0 0 10px #00ffea;
-          margin: 30px 0 15px;
-          border-bottom: 2px solid rgba(0,255,234,0.3);
-          padding-bottom: 5px;
-          text-align: left;
-        }
-
-        /* 新增：車輛列表容器樣式 (代替 #carList 內部的 grid) */
-        .car-list-container {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-          gap: 20px;
-          list-style: none;
-          padding: 0;
-          margin: 0;
-        }
-
-        /* 使用 li 代替原來的 .card div，並繼承樣式 */
-        .car-list-container li {
-          background: #222;
-          padding: 10px;
-          border-radius: 15px;
-          cursor: pointer;
-          transition: 0.3s;
-          border: 4px solid transparent;
-          text-align: center;
-        }
-
-        .car-list-container li:hover { 
-          transform: scale(1.3); 
-          background: #333; 
-        }
-
-        .car-list-container li.selected { 
-          border: 4px solid #0f0; 
-          background: #003300 !important; 
-        }
-
-        .car-list-container img {
-          width: 100%;
-          max-height: 200px; 
-          object-fit: contain;
-        }
-        
-        /* Mobile Controls: 修正方向鍵位置和樣式 (恢復圓形、置於角落) */
+       
 		#mobileControls {
 		  position: fixed;
-		  bottom: 0; 
+		  bottom: 3vh;
 		  left: 0;
-		  width: 100%; 
+		  width: 100%;
 		  display: flex;
 		  justify-content: space-between;
-		  padding: 20px;
-		  z-index: 100;
+		  padding: 0 4vw;
+		  z-index: 200;
 		  pointer-events: none;
 		}
 
 		#moveVertical,
 		#moveHorizontal {
 		  display: flex;
-		  gap: 20px;
+		  gap: 5px;
 		  pointer-events: auto;
 		  align-items: center;
 		}
@@ -470,20 +697,21 @@
 		}
 
 		#moveHorizontal {
-		  position: absolute;
-		  right: 40px;
-		  bottom: 20px;
 		  flex-direction: row;
+		  position: static;   /* 交俾 flex，唔再用硬座標 */
+		  margin-right: 7vw;
 		}
 
 		#mobileControls button {
-		  width: 140px;
-		  height: 140px;
+		  width: 12vw;
+		  height: 12vw;
+		  max-width: 60px;
+		  max-height: 60px;
 		  border-radius: 50%;
 		  border: 2px solid rgba(255, 255, 255, 0.3);
 		  background: rgba(0, 0, 0, 0.6);
 		  color: white;
-		  font-size: 24px;
+		  font-size: 12px;
 		  display: flex;
 		  align-items: center;
 		  justify-content: center;
@@ -511,16 +739,27 @@
 		  height: 140px;
 		  border-radius: 50%;
 		} 
-		/* 新增 Minimap Canvas 樣式 */
-		#minimapCanvas {
+		
+		#pitBtn {
+		  background-color: rgba(255, 165, 0, 0.8);
+		  color: white;
+		  font-weight: bold;
+		}		
+		
+		/* Cyber System Prompt */
+		#cyberPrompt {
 			position: absolute;
-			top: 60px; /* 放在 #hud (Top: 20px, Height: 40px) 的下方 */
-			left: 20px;
-			z-index: 20;
-			/* 讓它有一個深色邊框和背景 */
-			background: transparent; /* 深灰/黑色背景 */
-			
+			left: 10px;
+			top: 210px;
+			font-size: 12px;
+			color: #00ffff;
+			text-transform: uppercase;
+			font-weight: bold;
+			pointer-events: none;
+			animation: blink 1s infinite;
 		}
+
+		@keyframes blink { 50% { opacity: 0.3; } }
 
     </style>
 </head>
@@ -549,41 +788,47 @@
     <div id="trackSelect" class="menu">
         <h1>TRACK SELECT</h1>
         <div class="track-grid" id="trackGrid"></div>
-        <button class="btn" id="confirmTrackBtn">CONFIRM</button>
+         <button class="btn" id="confirmTrackBtn">NEXT</button>
     </div>
     
 	<div id="carMenu" class="menu">
 	  <h1>FORMULA SELECT</h1>
 	  <div class="container">
 		<div id="carList"></div>
-
 		<!-- ★ 新增：右側 Formula Spec Panel -->
 		<div id="carSpecPanel">
 		  <h2 id="specCarName">SELECT FORMULA</h2>
-
-		  <div class="spec-row">
-			<span class="spec-label">Speed</span>
+		  <!-- SPEED：名稱一行，下面一條 Bar -->
+		  <div class="spec-block">
+			<div class="spec-title-row">
+			  <span class="spec-label">SPEED</span>
+			  <span id="specSpeedText" class="spec-value">-</span>
+			</div>
 			<div class="spec-bar-bg">
 			  <div id="specSpeedBar" class="spec-bar-fill"></div>
 			</div>
-			<span id="specSpeedText" class="spec-value">-</span>
 		  </div>
 
-		  <div class="spec-row">
-			<span class="spec-label">Control</span>
+		  <!-- CONTROL：名稱一行，下面一條 Bar -->
+		  <div class="spec-block">
+			<div class="spec-title-row">
+			  <span class="spec-label">CONTROL</span>
+			  <span id="specControlText" class="spec-value">-</span>
+			</div>
 			<div class="spec-bar-bg">
 			  <div id="specControlBar" class="spec-bar-fill"></div>
 			</div>
-			<span id="specControlText" class="spec-value">-</span>
 		  </div>
 
-		  <div class="spec-row">
-			<span class="spec-label">Aero</span>
+		  <!-- AERO 行文字 -->
+		  <div class="spec-text-row">
+			<span class="spec-label">AERO</span>
 			<span id="specAeroText" class="spec-plain-value">-</span>
 		  </div>
 
-		  <div class="spec-row">
-			<span class="spec-label">Turn</span>
+		  <!-- TURN 行文字 -->
+		  <div class="spec-text-row">
+			<span class="spec-label">TURN</span>
 			<span id="specTurnText" class="spec-plain-value">-</span>
 		  </div>
 		  
@@ -609,8 +854,8 @@
 		  </div>
 		  
 		  <div id="specTurnTips"></div>
+		  <button class="btn" id="confirmBtn">GO!</button>
 		  
-		  <button class="btn" id="confirmBtn">CONFIRM</button>
 		  
 	    </div>
 	  </div>
@@ -625,64 +870,71 @@
         <div id="hud"></div>
         <div id="lapHud">LAP 0/5</div>
         <div id="posHud">POS #1/11</div>
-        <div id="speedHud">0 kmh</div>
         <div id="countdown"></div>
-		<canvas id="dashboardCanvas" width="400" height="250"></canvas>
-		<div id="boostBarContainer">
-			<div id="boostBar"></div>
+		<div id="cyberPrompt">Tap Avatar: System Link</div>
+        <div id="rightUI">
+			<canvas id="dashboardCanvas" width="400" height="250"></canvas>
+			<div id="boostBarContainer">
+				<div id="boostBar"></div>
+			</div>
 		</div>
-		<canvas id="minimapCanvas" width="300" height="300"></canvas>
-		<div id="tireMonitorContainer" style="position: absolute; top: 80px; right: 40px; width: 100px; height: 100px; background: rgba(0, 0, 0, 0.4); border-radius: 5px; padding: 5px;">
-        <canvas id="tireMonitorCanvas" width="100" height="100"></canvas>
-		</div>
-		<div id="pitHudPrompt" style="
-			position: absolute; 
-			top: 200px; 
-			right: 50px; /* 放在輪胎 HUD 下邊 */
-			padding: 5px 10px; 
-			font-size: 24px; 
-			font-weight: bold; 
-			color: yellow; 
-			background: rgba(0, 0, 0, 0.6); 
-			border: 2px solid yellow; 
-			border-radius: 5px;
-			display: none;">
-			PIT
-		</div>
-    </div>
-    
-	 <div id="mobileControls">
-	  <button id="pitBtn" style="
-        position: absolute; 
-        top:190px; 
-        left: 190px; 
-        width: 100px; 
-        height: 100px;
-		z-index: 1000;
-		pointer-events: auto;
-        font-size: 20px; 
-        font-weight: bold;
-        background-color: rgba(255, 165, 0, 0.8); /* 橘色 */
-        color: white; 
-        border: 2px solid #fff; 
-        border-radius: 50%;">
-        PIT
-      </button>
-	  <div id="moveVertical">
-		<button id="btnUp">↑</button>
-		<button id="btnDown">↓</button>
-	  </div>
-	  <div id="moveHorizontal">
-		<button id="boostBtn">BOOST</button>
-		<button id="btnLeft">←</button>
-		<button id="btnRight">→</button>
-	  </div>
-	</div>
-	<div id="countdown"></div>
 
+        <canvas id="minimapCanvas" width="300" height="300"></canvas>
+
+        <div id="tireMonitorContainer"
+             style="position: absolute; bottom: 24vh; left: 2vw; width: 100px; height: 100px;
+                    background: rgba(0, 0, 0, 0.4); border-radius: 5px; padding: 5px;">
+            <canvas id="tireMonitorCanvas" width="100" height="100"></canvas>
+        </div>
+
+        <div id="pitHudPrompt" style="
+          position: absolute;
+          top: 15vh;
+          right: 3vw;
+          padding: 5px 10px;
+          font-size: 2.5vh;
+          font-weight: bold;
+          color: yellow;
+          background: rgba(0,0,0,0.6);
+          border: 2px solid yellow;
+          border-radius: 5px;
+          display: none;">
+          PIT
+        </div>
+    </div>
+
+    <!-- ★ 正確的 Mobile Controls Wrapper -->
+    <div id="mobileControls">
+      <div id="moveVertical">
+        <button id="pitBtn"
+          style="
+            z-index: 1000;
+            pointer-events: auto;
+            font-size: 10px;
+            font-weight: bold;
+            background-color: rgba(255, 165, 0, 0.8);
+            color: white;
+            border: 2px solid #fff;
+            border-radius: 50%;
+          ">
+          PIT
+        </button>
+        <button id="btnUp">↑</button>
+        <button id="btnDown">↓</button>
+      </div>
+      <div id="moveHorizontal">
+        <button id="boostBtn">BOOST</button>
+        <button id="btnLeft">←</button>
+        <button id="btnRight">→</button>
+      </div>
+    </div>
+
+    <!-- ★ 這個多餘的 countdown 建議刪掉，gameContainer 裡已經有一個 -->
+    <!-- <div id="countdown"></div> -->
 
     <script src="cars.js"></script>
     <script src="track.js"></script>
     <script src="game.js"></script>
 </body>
+
 </html>
