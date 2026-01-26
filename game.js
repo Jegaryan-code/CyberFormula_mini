@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', () =>  {
 
   const SCALE = 5.0;
+  
+  const CAMERA_ZOOM = 0.6;   // ★ 鏡頭縮放 (1 = 原來大小, 0.8 = 拉遠少少)
 
   const WORLD_SPEED_SCALE = 0.8;
 
@@ -8,15 +10,63 @@ document.addEventListener('DOMContentLoaded', () =>  {
 
   const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
 
-  const CARWIDTH = 130;
+  const CARWIDTH = 120;
 
   const CARHEIGHT = 150;
+  
+const grandstandImg = new Image();
+grandstandImg.src = 'track/grandstand.png'; // Make sure the path is correct 
+  
+// Pre-load Team Banners/Logos
+const teamLogos = {
+    "SUGO": new Image(),
+    "AOI": new Image(),
+    "UNION": new Image(),
+    "STORMZENDER": new Image(),
+    "MISSING": new Image(),
+    "OTHERS": new Image()
+};
+teamLogos["SUGO"].src = "team/sugo.webp";
+teamLogos["AOI"].src = "team/aoi.webp";
+teamLogos["UNION"].src = "team/union_savior.webp";
+teamLogos["STORMZENDER"].src = "team/stormzender.webp";
+teamLogos["MISSING"].src = "team/missing_link.webp";
+teamLogos["OTHERS"].src = "team/single/Phoenix.webp";
 
-  const canvas = document.getElementById('game');
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 
-  const ctx = canvas.getContext('2d');
+let cyberSystemActive = false;
+let cyberSystemTimer = 0;
+const CYBER_DURATION = 300; // 5 seconds at 60fps
+let offTrackFactor = 1.0;
 
-  const W = canvas.width, H = canvas.height;
+// 讓 W / H 隨瀏覽器變
+let W = canvas.width;
+let H = canvas.height;
+
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = window.innerWidth;
+    const cssH = window.innerHeight;
+    
+    // Scale for high resolution screens
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    W = cssW;
+    H = cssH;
+    
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Hide mobile controls on PC
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
+    document.getElementById('mobileControls').style.display = isMobile ? 'flex' : 'none';
+}
+
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', resizeCanvas);
+resizeCanvas();  // 一入頁就 fit browser
+
 
   const AI_AVATAR_MAP = [
   {key: "asurada", img: "ai/AI_ASURADA.png", name: "ASURADA"},
@@ -187,6 +237,260 @@ function getCarMaxSpeed(car)  {
 
 }
 
+// 2. Off-Track Detection Logic
+function checkOffTrack(car) {
+    const t = TRACKS[currentTrack];
+    let minSquareDist = Infinity;
+
+    // 1. Check Main Race Track
+    for (let i = 0; i < t.waypoints.length; i++) {
+        const p1 = t.waypoints[i];
+        const p2 = t.waypoints[(i + 1) % t.waypoints.length];
+        const dist = distToSegment(
+            car.x, car.y, 
+            p1.x * SCALE, p1.y * SCALE, 
+            p2.x * SCALE, p2.y * SCALE
+        );
+        if (dist < minSquareDist) minSquareDist = dist;
+    }
+
+    // 2. Check Pit Road (Exclude from penalty)
+    if (t.pitWaypoints) {
+        for (let i = 0; i < t.pitWaypoints.length - 1; i++) {
+            const p1 = t.pitWaypoints[i];
+            const p2 = t.pitWaypoints[i + 1];
+            const dist = distToSegment(
+                car.x, car.y, 
+                p1.x * SCALE, p1.y * SCALE, 
+                p2.x * SCALE, p2.y * SCALE
+            );
+            if (dist < minSquareDist) minSquareDist = dist;
+        }
+    }
+
+    const roadWidthThreshold = (95 * SCALE);
+    const isOff = Math.sqrt(minSquareDist) > roadWidthThreshold;
+    
+    if (isOff) {
+        // Subtle penalty so car can still move back to track
+        offTrackFactor = 0.98; 
+        
+        // Triple Dust effect when off-track
+        if (Math.abs(car.speed) > 2) {
+            for(let i=0; i<3; i++) {
+                dustParticles.push({
+                    x: car.x + (Math.random()-0.5)*30,
+                    y: car.y + (Math.random()-0.5)*30,
+                    vx: -Math.cos(car.angle) * 1.5,
+                    vy: -Math.sin(car.angle) * 1.5,
+                    life: 30,
+                    maxLife: 30
+                });
+            }
+        }
+    } else {
+        offTrackFactor = 1.0;
+    }
+}
+
+function distToSegment(px, py, x1, y1, x2, y2) {
+    const l2 = Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2);
+    if (l2 === 0) return Math.pow(px - x1, 2) + Math.pow(py - y1, 2);
+    let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.pow(px - (x1 + t * (x2 - x1)), 2) + Math.pow(py - (y1 + t * (y2 - y1)), 2);
+}
+
+function emitOffTrackDust(car) {
+    for (let i = 0; i < 50; i++) { // Triple dust
+        dustParticles.push({
+            x: car.x + (Math.random() - 0.5) * 140,
+            y: car.y + (Math.random() - 0.5) * 140,
+            vx: -Math.cos(car.angle) * 2,
+            vy: -Math.sin(car.angle) * 2,
+            life: 400,
+            maxLife: 600,
+            color: '#D2B48C' // Sandy color
+        });
+    }
+}
+
+function emitCyberParticle(car, color) {
+    boostParticles.push({
+        x: car.x + (Math.random() - 0.5) * 40,
+        y: car.y + (Math.random() - 0.5) * 40,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2,
+        life: 20,
+        maxLife: 20,
+        color: color,
+        width: 2,
+        length: 2,
+        angle: Math.random() * Math.PI * 2
+    });
+}
+
+function activateCyberSystem() {
+    if (!player) return;
+    const spec = player.spec;
+    const carName = spec.image.toLowerCase();
+    
+    cyberSystemActive = !cyberSystemActive;
+
+    // --- NEW: WAYPOINT SYNCHRONIZATION ---
+    if (cyberSystemActive) {
+        const wp = TRACKS[currentTrack].waypoints;
+        let minDist = Infinity;
+        let closestIdx = 0;
+
+        // Scan all waypoints to find the one closest to our current location
+        for (let i = 0; i < wp.length; i++) {
+            const dx = wp[i].x * SCALE - player.x;
+            const dy = wp[i].y * SCALE - player.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < minDist) {
+                minDist = dist;
+                closestIdx = i;
+            }
+        }
+        // Target the NEXT waypoint after the closest one to ensure we move forward
+        player.waypointIndex = (closestIdx + 1) % wp.length;
+    }
+    // -------------------------------------
+
+    modeNotifyTimer = 180; 
+
+    if (cyberSystemActive) {
+        if (carName.includes("asurada")) modeNotifyText = "ASURADA: ALL SYSTEMS LINKED. I WILL ASSIST YOUR NAVIGATION.";
+        else if (carName.includes("ogre")) modeNotifyText = "OGRE: ...LIMITER REMOVED. DON'T LET GO OF THE WHEEL.";
+        else if (carName.includes("al-zard")) modeNotifyText = "AL-ZARD: AUTO-BIO LINK STABILIZED. CALCULATING OPTIMAL PATH.";
+        else if (carName.includes("garland")) modeNotifyText = "GARLAND: DEFENSIVE PROGRAM ACTIVE. CHASSIS STABILIZED.";
+        else modeNotifyText = "SYSTEM: CYBER LINK ESTABLISHED.";
+    } else {
+        modeNotifyText = "SYSTEM: DISCONNECTED. RETURNING TO MANUAL CONTROL.";
+    }
+}
+
+function updateCyberSystemLogic() {
+    if (!cyberSystemActive || !player) return;
+
+    const carName = player.spec.image.toLowerCase();
+    const wp = TRACKS[currentTrack].waypoints;
+    if (!wp || !wp.length) return;
+
+    // 1. Get current target based on synced index
+    const baseTarget = wp[player.waypointIndex];
+    const tx = baseTarget.x * SCALE;
+    const ty = baseTarget.y * SCALE;
+    const finalDX = tx - player.x;
+    const finalDY = ty - player.y;
+
+    // 2. Progression logic (So Al-Zard keeps moving through points)
+    const distToWp = Math.hypot(finalDX, finalDY);
+    if (distToWp < 600) { // 600 is a good "capture" distance
+        player.waypointIndex = (player.waypointIndex + 1) % wp.length;
+    }
+
+    // 3. AL-ZARD (Auto Bio-Link)
+    if (carName.includes("al-zard") || carName.includes("zard")) {
+        const targetAngle = Math.atan2(finalDY, finalDX);
+        const steeringAngle = Math.atan2(Math.sin(targetAngle - player.angle), Math.cos(targetAngle - player.angle)) * 0.38;
+
+        player.angle += steeringAngle * 0.08; 
+
+        const baseMaxS = 26.7;
+        const targetSpeed = isBoosting ? (baseMaxS * 2.5) : (baseMaxS * 0.75);
+
+        if (player.forwardSpeed < targetSpeed) {
+            player.forwardSpeed += 0.25; 
+        }
+
+        if (Math.abs(steeringAngle) > 0.05 && !isBoosting) {
+            player.forwardSpeed *= 0.985; 
+        }
+
+        if (Math.random() < 0.3) emitCyberParticle(player, '#ff0000');
+    }
+
+    // --- 3. ASURADA (Navigation Support - NOT Auto-Drive) ---
+    else if (carName.includes("asurada")) {
+        // Ported logic: Asurada helps you stay on track during drifts
+        if (isDriftMode || Math.abs(player.sideSpeed) > 3) {
+            // "Aero-Grip" momentum preservation
+            player.forwardSpeed *= 1.012; 
+
+            const targetAngle = Math.atan2(finalDY, finalDX);
+            const diff = Math.atan2(Math.sin(targetAngle - player.angle), Math.cos(targetAngle - player.angle));
+            // Very small authority so player stays in control
+            player.angle += diff * 0.006; 
+        }
+        if (Math.random() < 0.2) emitCyberParticle(player, '#00ffff');
+    }
+
+    // --- 4. OGRE (Berserk Mode) ---
+    else if (carName.includes("ogre")) {
+        // High speed, low stability
+        if (player.forwardSpeed > 5) player.forwardSpeed += 0.07;
+        player.angle += (Math.random() - 0.5) * 0.03;
+        if (Math.random() < 0.3) emitCyberParticle(player, '#ff00ff');
+    }
+
+    // --- 5. GARLAND (Stability) ---
+    else if (carName.includes("garland")) {
+        tireHealth = [100, 100, 100, 100];
+        player.sideSpeed *= 0.85; 
+        if (Math.random() < 0.2) emitCyberParticle(player, '#ffffff');
+    }
+}
+
+// 4. Update the Draw Avatar function to be clickable
+function drawSingleAIAvatar(ctx) {
+    if (!currentAIAvatarImg || !currentAIAvatarImg.complete) return;
+
+    const size = Math.min(W * 0.08, 140);
+    const x = 4 * W / 100;
+    const y = 9 * H / 100;
+
+    ctx.save();
+    
+    // Add glowing background if Cyber System is active
+    if (cyberSystemActive) {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = "#00ffff";
+        ctx.strokeStyle = "#00ffff";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(x - 5, y - 5, size + 10, size + 10);
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x - 10, y - 10, size + 20, size + 50);
+
+    ctx.drawImage(currentAIAvatarImg, x, y, size, size);
+
+    ctx.font = `bold ${Math.max(14, size * 0.25)}px Rajdhani`;
+    ctx.fillStyle = cyberSystemActive ? '#00ffff' : '#888888';
+    ctx.textAlign = 'center';
+    ctx.fillText(currentAIName, x + size / 2, y + size + 28);
+    
+    // Status Text
+    ctx.font = `bold 10px Rajdhani`;
+    ctx.fillText(cyberSystemActive ? "SYSTEM ACTIVE" : "STANDBY", x + size / 2, y + size + 42);
+
+    ctx.restore();
+}
+
+// Add event listener for AI Head Click
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    
+    // Check if clicked in AI Avatar area
+    if (clickX > 20 && clickX < 140 && clickY > 80 && clickY < 200) {
+        activateCyberSystem();
+    }
+});
+
 function createSandPattern()  {
 
   const pCanvas = document.createElement('canvas');
@@ -225,7 +529,7 @@ return ctx.createPattern(pCanvas, 'repeat');
 
 }
 
-function drawSandBackground(ctx, offsetX, offsetY)  {
+function drawSandBackground(ctx)  {
 
   const patternSize = 100;
 
@@ -255,31 +559,20 @@ ctx.restore();
 
 }
 
-function drawCurrentTrackRoad(ctx, offsetX, offsetY)  {
+function drawCurrentTrackRoad(ctx) {
+    const t = TRACKS[currentTrack];
+    const wps = t.waypoints;
+    if (!wps || !wps.length) return;
 
-  const t = TRACKS[currentTrack];
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "butt";
 
-  const wps = t.waypoints;
-
-  if (!wps || !wps.length) return;
-
-  ctx.save();
-
-  ctx.lineJoin = 'round';
-
-  ctx.lineCap = 'butt';
-
-  ctx.beginPath();
-
-  ctx.moveTo(wps[0].x * SCALE - offsetX, wps[0].y * SCALE - offsetY);
-
-  for (let i = 1;
-  i < wps.length;
-  i++)  {
-
-    ctx.lineTo(wps[i].x * SCALE - offsetX, wps[i].y * SCALE - offsetY);
-
-  }
+    ctx.beginPath();
+    ctx.moveTo(wps[0].x * SCALE, wps[0].y * SCALE);
+    for (let i = 1; i < wps.length; i++) {
+        ctx.lineTo(wps[i].x * SCALE, wps[i].y * SCALE);
+    }
 
 ctx.closePath();
 
@@ -323,6 +616,111 @@ ctx.stroke();
 
 ctx.restore();
 
+}
+
+function drawModeHUD(ctx) {
+    if (gameState !== 'racing') return;
+
+    const x = W - 180;
+    const y = H - 280; // Above the dashboard
+    
+    ctx.save();
+    // Background plate
+    ctx.fillStyle = "rgba(0, 20, 40, 0.7)";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 150, y);
+    ctx.lineTo(x + 130, y + 30);
+    ctx.lineTo(x - 20, y + 30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = currentMode === 'AERO' ? "#00ffff" : "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Text
+    ctx.font = "bold 18px Rajdhani";
+    ctx.textAlign = "center";
+    ctx.fillStyle = currentMode === 'AERO' ? "#00ffff" : "#ffffff";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = ctx.fillStyle;
+    
+    // Add a little icon or bracket
+    const label = currentMode === 'AERO' ? "« AERO MODE »" : "[ CIRCUIT ]";
+    ctx.fillText(label, x + 65, y + 22);
+    ctx.restore();
+}
+
+function drawCyberOverlay(ctx) {
+    if (!cyberSystemActive || gameState !== 'racing') return;
+
+    const carName = player.spec.image.toLowerCase();
+    ctx.save();
+
+    if (carName.includes("asurada")) {
+        // ASURADA: Blue Digital Scanlines at edges
+        ctx.strokeStyle = "rgba(0, 255, 255, 0.15)";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < H; i += 10) {
+            ctx.beginPath();
+            ctx.moveTo(0, i); ctx.lineTo(W, i);
+            ctx.stroke();
+        }
+    } else if (carName.includes("ogre")) {
+        // OGRE: Purple "Glitch" / Vibration effect
+        ctx.fillStyle = "rgba(255, 0, 255, 0.05)";
+        ctx.fillRect(0, 0, W, H);
+        // Slight random screen offset handled in loop camera if desired
+    } else if (carName.includes("al-zard")) {
+        // AL-ZARD: Red "Targeting" Vignette
+        let grd = ctx.createRadialGradient(W/2, H/2, W/3, W/2, H/2, W);
+        grd.addColorStop(0, "transparent");
+        grd.addColorStop(1, "rgba(255, 0, 0, 0.2)");
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    ctx.restore();
+}
+
+function drawAIMessageBox(ctx, msg, prefix, boosting) {
+    ctx.save();
+    const boxW = W * 0.6;
+    const boxH = H * 0.08;
+    const boxX = (W - boxW) / 2;
+    const boxY = H * 0.08;
+
+    ctx.fillStyle = "rgba(0, 15, 30, 0.85)";
+    ctx.strokeStyle = boosting ? "#ff00ff" : "#00ffff";
+    ctx.lineWidth = 2.5;
+
+    ctx.beginPath();
+    ctx.moveTo(boxX, boxY);
+    ctx.lineTo(boxX + boxW - 40, boxY);
+    ctx.lineTo(boxX + boxW, 40 + boxY);
+    ctx.lineTo(boxX + boxW, boxH + boxY);
+    ctx.lineTo(boxX + 40, boxH + boxY);
+    ctx.lineTo(boxX, boxH - 40 + boxY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    const titleFont = Math.max(14, H * 0.020);
+    const msgFont   = Math.max(12, H * 0.018);
+    const textY = boxY + boxH * 0.6;
+
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#00ffff";
+    ctx.textAlign = "left";
+    ctx.font = `bold ${titleFont}px 'Rajdhani'`;
+    ctx.fillStyle = "#fbff00";
+    ctx.fillText(prefix, boxX + 36, textY);
+
+    ctx.font = `${msgFont}px 'Rajdhani'`;
+    ctx.fillStyle = "#ffffff";
+    const prefixWidth = ctx.measureText(prefix).width;
+    ctx.fillText(msg, boxX + 40 + prefixWidth, textY);
+    ctx.restore();
 }
 
 function updateCarPhysics(car, acceleration, steering) {
@@ -488,7 +886,6 @@ function isMirageTurnCar() {
     return name.includes("ogre") || name.includes("an-21");
 }
 
-
 function tryActivateMirageTurn(player, maxSpeedNow, mode = "mirage") {
   const speed = Math.abs(player.forwardSpeed || player.speed || 0);
   const side  = Math.abs(player.sideSpeed || 0);
@@ -525,7 +922,6 @@ function tryActivateCometTurn(player, maxSpeedNow) {
 	cometTurnBannerTimer = COMET_TURN_BANNER_DURATION;
 
 }
-
 
 function tryActivateCometEvolution(player, steer, maxSpeedNow) {
     if (cometEvolutionActive) return;
@@ -1268,122 +1664,84 @@ function updateCarSpecPanel(spec) {
 }
 
 function buildCarList()  {
-
   const container = document.getElementById('carList');
-
   container.innerHTML = '';
 
-  const teams =  {};
+  const teams = {};
 
-CARSPECS.forEach((spec, index) =>  {
+  CARSPECS.forEach((spec, index) =>  {
+    const teamNameMatch = spec.image.match(/^([^/]+)\//);
+    let teamName = teamNameMatch ? teamNameMatch[1] : 'ERROR_NO_FOLDER';
 
-  const teamNameMatch = spec.image.match(/^([^/]+)\//);
+    teamName = teamName.replace(/[-_]/g, ' ');
+    teamName = teamName.split(' ').map(word =>
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
 
-  let teamName = teamNameMatch ? teamNameMatch[1] : 'ERROR_NO_FOLDER';
+    if (!teams[teamName]) {
+      teams[teamName] = [];
+    }
+    teams[teamName].push({ ...spec, index });
+  });
 
-  teamName = teamName.replace(/[-_]/g, ' ');
+  Object.keys(teams).sort().forEach(teamName =>  {
+    if (teamName === 'Error No Folder') return;
 
-  teamName = teamName.split(' ').map(word => 
-  word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-  ).join(' ');
+    const carsInTeam = teams[teamName];
 
-  if (!teams[teamName])  {
+    const header = document.createElement('div');
+    header.className = 'team-header';
+    header.textContent = teamName + ' Team';
+    container.appendChild(header);
 
-    teams[teamName] = [];
+    const ul = document.createElement('ul');
+    ul.className = 'car-list-container';
 
-  }
+    carsInTeam.forEach(car =>  {
+      const li = document.createElement('li');
+      li.className = `card ${car.index === selectedCar ? 'selected' : ''}`;
+      li.setAttribute('data-index', car.index);
 
-teams[teamName].push( {
-  ...spec, index: index 
-});
+      const img = document.createElement('img');
+      img.src = car.image;
+      img.alt = car.image;
 
-});
+      const baseName = car.image
+        .split('/').pop()
+        .replace('.png', '')
+        .replace(/_/g, ' ');
 
-Object.keys(teams).sort().forEach(teamName =>  {
+      const carName = document.createElement('p');
+      carName.textContent = baseName;
 
-  if (teamName === 'Error No Folder') return;
+      // ★ 用 class，唔再用 inline style
+      carName.className = 'car-name';
 
-  const carsInTeam = teams[teamName];
+      li.appendChild(img);
+      li.appendChild(carName);
 
-  const header = document.createElement('div');
+      li.onclick = () =>  {
+        const selectedIndex = parseInt(li.getAttribute('data-index'), 10);
+        selectedCar = selectedIndex;
 
-  header.className = 'team-header';
+        document.querySelectorAll('#carMenu .card').forEach(item => {
+          item.classList.remove('selected');
+        });
+        li.classList.add('selected');
+		
+		const spec = CARSPECS[selectedCar];
+		updateCarSpecPanel(spec);
+      };
 
-  header.textContent = teamName + ' Team';
+      ul.appendChild(li);
+    });
 
-  container.appendChild(header);
-
-  const ul = document.createElement('ul');
-
-  ul.className = 'car-list-container';
-
-  carsInTeam.forEach(car =>  {
-
-    const li = document.createElement('li');
-
-    li.className = `card ${car.index === selectedCar ? 'selected' : ''}`;
-
-    li.setAttribute('data-index', car.index);
-
-    const img = document.createElement('img');
-
-    img.src = car.image;
-
-    img.alt = car.image;
-
-    const baseName = car.image.split('/').pop().replace('.png', '').replace(/_/g, ' ');
-
-    const carName = document.createElement('p');
-
-    carName.textContent = baseName;
-
-    carName.style.fontSize = '28px';
-
-    carName.style.margin = '5px 0 0';
-
-    carName.style.color = '#ccc';
-
-    carName.style.fontFamily = 'Rajdhani, sans-serif';
-
-    li.appendChild(img);
-
-    li.appendChild(carName);
-	
-    // Hover（roll over）時更新右側 spec
-    li.addEventListener('mouseenter', () => {
-      const spec = CARSPECS[car.index];
-      updateCarSpecPanel(spec);
-    });	
-
-    li.onclick = () =>  {
-
-      const selectedIndex = parseInt(li.getAttribute('data-index'));
-
-      selectedCar = selectedIndex;
-
-      document.querySelectorAll('#carMenu .card').forEach(item =>  {
-
-        item.classList.remove('selected');
-
-      }
-    );
-
-    li.classList.add('selected');
-
-  };
-
-ul.appendChild(li);
-
-});
-
-container.appendChild(ul);
-
-});
+    container.appendChild(ul);
+  });
 
   if (typeof selectedCar === 'number' && CARSPECS[selectedCar]) {
     updateCarSpecPanel(CARSPECS[selectedCar]);
   }
-
 }
 
 function startRace()  {
@@ -1488,8 +1846,9 @@ raceFinished = false;
 
 player.prevY = player.y;
 
+if (!playerAutoDriving && !inPit) {
 document.getElementById('lapHud').textContent = `LAP 0/${totalLaps}`;
-
+}
 const countdownElement = document.getElementById('countdown');
 
 if (countdownElement)  {
@@ -1680,7 +2039,7 @@ ctx.restore();
 
 }
 
-function drawStartGrid(ctx, track, scale, offsetX, offsetY)  {
+function drawStartGrid(ctx, track, scale)  {
 
   const grid = track.gridPositions;
 
@@ -1696,9 +2055,9 @@ function drawStartGrid(ctx, track, scale, offsetX, offsetY)  {
 
   grid.forEach((pos, i) =>  {
 
-    const x = (pos.x * scale) - offsetX;
+    const x = (pos.x * scale);
 
-    const y = (pos.y * scale) - offsetY;
+    const y = (pos.y * scale);
 
     ctx.beginPath();
 
@@ -1744,7 +2103,6 @@ function getBoostImagePath(originalPath) {
   return (testImg.complete && testImg.naturalWidth > 0) ? boostPath : null;
 }
 
-
 // 3. Aero/Circuit Mode 判斷
 // Mode 切換通知函數
 function showModeChange(newMode) {
@@ -1775,7 +2133,7 @@ function updateAeroMode(car, isPlayer) {
 
   if (isPlayer && car.isAeroMode !== prevAero) {
     currentMode = car.isAeroMode ? 'AERO' : 'CIRCUIT';
-    modeNotifyTimer = 120;
+    modeNotifyTimer = 90;
   }
 }
 
@@ -1837,8 +2195,6 @@ function switchCarImage(car, isPlayerBoosting = false) {
         }
     }
 }
-
-
 
 function emitBoostForCar(car, isPlayer)  {
 
@@ -2048,7 +2404,6 @@ function emitLiftingTurnWind(car) {
     }
 }
 
-
 function updateTireWear(car, deltaTime)  {
 
   if (!car.tireHealth || car.inPit) return;
@@ -2087,7 +2442,6 @@ i++)  {
 
 }
  
-
 function drawTireMonitor(car, ctx)  {
 
   if (!ctx) return;
@@ -2160,459 +2514,364 @@ if (gameState !== 'title')  {
 
 }
 
-function drawSingleAIAvatar(ctx)  {
-
+function drawSingleAIAvatar(ctx) {
   if (!currentAIAvatarImg || !currentAIAvatarImg.complete) return;
 
-  const size = 100;
-
-  const x = W / 2 - size / 2;
-
-  const y = H - 440;
+  const size = Math.min(W * 0.08, 140);     // 畫面闊度 12%，上限 140
+  const x = 4 * W / 100;                    // 左邊留 3% 空位
+  const y = 9 * H / 100;                   // 貼近上方（大約 11% 高度）
 
   ctx.save();
-
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-
-  ctx.fillRect(x - 12, y - 12, size + 24, size + 48);
-
-  ctx.strokeStyle = "rgba(0,255,255,0.5)";
-
-  ctx.lineWidth = 2;
-
-  ctx.strokeRect(x - 12, y - 12, size + 24, size + 48);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(x - 10, y - 10, size + 20, size + 50);
 
   ctx.drawImage(currentAIAvatarImg, x, y, size, size);
 
-  ctx.font = "bold 14px Rajdhani";
-
-  ctx.fillStyle = "#00ffff";
-
-  ctx.textAlign = "center";
-
-  ctx.fillText(currentAIName, x + size / 2, y + size + 20);
+  ctx.font = `bold ${Math.max(14, size * 0.25)}px Rajdhani`;
+  ctx.fillStyle = '#00ffff';
+  ctx.textAlign = 'center';
+  ctx.fillText(currentAIName, x + size / 2, y + size + 28);
 
   ctx.restore();
-
 }
 
 function loop()  {
 
   if (gameState === 'paused' || raceFinished)  {
-
     return;
-
   }
 
-if (sandPattern)  {
+  // 背景
+  if (sandPattern)  {
+    ctx.fillStyle = sandPattern;
+    ctx.fillRect(0, 0, W, H);
+  } else  {
+    ctx.fillStyle = '#C2B280';
+    ctx.fillRect(0, 0, W, H);
+  }
 
-  ctx.fillStyle = sandPattern;
-
-  ctx.fillRect(0, 0, W, H);
-
-}
-else  {
-
-  ctx.fillStyle = '#C2B280';
-
-  ctx.fillRect(0, 0, W, H);
-
-}
-
-if (!player)  {
-
-  requestAnimationFrame(loop);
-
-  return;
-
+if (!player) {
+    requestAnimationFrame(loop);
+    return;
 }
 
-const offsetX = player.x - W / 2;
+// === Camera transform 開始 ===
+ctx.save();
 
-const offsetY = player.y - H / 2;
+// 將畫面中心移去 (W/2, H/2)
+ctx.translate(W / 2, H / 2);
 
-ctx.drawImage(trackImg, -offsetX, -offsetY, TRACKS[currentTrack].originalWidth * SCALE, TRACKS[currentTrack].originalHeight * SCALE);
+// 縮放世界（假設你上面已經有 const CAMERA_ZOOM = 0.6 之類）
+ctx.scale(CAMERA_ZOOM, CAMERA_ZOOM);
 
-drawCurrentTrackRoad(ctx, offsetX, offsetY);
+// 將玩家車拉到畫面中心
+ctx.translate(-player.x, -player.y);
 
-drawStartGrid(ctx, TRACKS[currentTrack], SCALE, offsetX, offsetY);
+// 之後全部用「世界座標」直畫
+ctx.drawImage(
+    trackImg,
+    0,
+    0,
+    TRACKS[currentTrack].originalWidth * SCALE,
+    TRACKS[currentTrack].originalHeight * SCALE
+);
+
+// 這兩個 helper 要改簽名，只用世界座標（下面第 4 點有解）
+drawCurrentTrackRoad(ctx);
+drawStartGrid(ctx, TRACKS[currentTrack], SCALE);
 
 const trackData = TRACKS[currentTrack];
 
-const PIT_LANE_WIDTH = 40 * SCALE;
 
+// 1. Draw the Full Screen Overlays first
+drawCyberOverlay(ctx);
+
+// 2. Draw Mode HUD (Aero/Circuit)
+drawModeHUD(ctx);
+
+// ==========================================
+// NEW PIT & GRANDSTAND DRAWING (Inside Camera)
+// ==========================================
 const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
-
 const RENDER_PARKING_INDEX = PIT_WAYPOINTS_COUNT >= 3 ? PIT_WAYPOINTS_COUNT - 3 : -1;
 
-if (trackData && trackData.pitWaypoints && trackData.pitWaypoints.length > 1)  {
-
-  ctx.save();
-
-  ctx.fillStyle = '#555555';
-
-  ctx.beginPath();
-
-  trackData.pitWaypoints.forEach((wp, index) =>  {
-
-    const x = wp.x * SCALE - player.x + W / 2;
-
-    const y = wp.y * SCALE - player.y + H / 2;
-
-    const dx = (index < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[index + 1].x * SCALE - wp.x * SCALE : wp.x * SCALE - trackData.pitWaypoints[index - 1].x * SCALE;
-
-    const dy = (index < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[index + 1].y * SCALE - wp.y * SCALE : wp.y * SCALE - trackData.pitWaypoints[index - 1].y * SCALE;
-
-    const angle = Math.atan2(dy, dx);
-
-    const perpAngle = angle + Math.PI / 2;
-
-    const offsetX = Math.cos(perpAngle) * PIT_LANE_WIDTH / 2;
-
-    const offsetY = Math.sin(perpAngle) * PIT_LANE_WIDTH / 2;
-
-    if (index === 0)  {
-
-      ctx.moveTo(x + offsetX, y + offsetY);
-
+if (trackData.pitWaypoints && trackData.pitWaypoints.length > 1) {
+    ctx.save();
+    
+    // 1. Draw Pit Road (Simple Gray)
+    ctx.beginPath();
+    ctx.lineWidth = 40 * SCALE;
+    ctx.strokeStyle = "#555555"; // Dark asphalt
+    ctx.lineJoin = "round";
+    ctx.moveTo(trackData.pitWaypoints[0].x * SCALE, trackData.pitWaypoints[0].y * SCALE);
+    for(let i=1; i<trackData.pitWaypoints.length; i++) {
+        ctx.lineTo(trackData.pitWaypoints[i].x * SCALE, trackData.pitWaypoints[i].y * SCALE);
     }
-  else  {
+    ctx.stroke();
 
-    ctx.lineTo(x + offsetX, y + offsetY);
+    // 2. Draw Team Garages (The Paddock)
+    if (RENDER_PARKING_INDEX >= 0) {
+        const wp = trackData.pitWaypoints[RENDER_PARKING_INDEX];
+        const bx = wp.x * SCALE;
+        const by = wp.y * SCALE;
+        
+        const boxW = CARWIDTH * 1.5; 
+        const boxH = CARHEIGHT * 1.2;
+        const gap = boxH * 1.1;
 
-  }
+        // Logic to find Player's team
+        const playerTeam = player.spec.image.toUpperCase();
+        let currentTeamKey = "OTHERS";
+        if (playerTeam.includes("SUGO")) currentTeamKey = "SUGO";
+        else if (playerTeam.includes("AOI")) currentTeamKey = "AOI";
+        else if (playerTeam.includes("UNION")) currentTeamKey = "UNION";
+        else if (playerTeam.includes("STORMZENDER")) currentTeamKey = "STORMZENDER";
+        else if (playerTeam.includes("MISSING")) currentTeamKey = "MISSING";
 
-});
+        for (let i = 0; i < 6; i++) {
+            const currentY = by + (i * gap);
+            const currentX = bx + 150; // Garage offset from road
 
-for (let i = trackData.pitWaypoints.length - 1;
-i >= 0;
-i--)  {
+            // Garage floor
+            ctx.fillStyle = (i === 0) ? "rgba(0, 255, 255, 0.1)" : "#222";
+            ctx.fillRect(currentX, currentY - boxH/2, boxW, boxH);
+            
+            // Neon Border for Player box
+            ctx.strokeStyle = (i === 0) ? "#00ffff" : "#555";
+            ctx.lineWidth = 4;
+            ctx.strokeRect(currentX, currentY - boxH/2, boxW, boxH);
 
-  const wp = trackData.pitWaypoints[i];
+            // Draw Team Logo / Banner
+            const logo = (i === 0) ? teamLogos[currentTeamKey] : null; 
+            if (logo && logo.complete) {
+                ctx.drawImage(logo, currentX + (boxW/2 - 40), currentY - 40, 80, 80);
+            }
 
-  const x = wp.x * SCALE - player.x + W / 2;
-
-  const y = wp.y * SCALE - player.y + H / 2;
-
-  const dx = (i < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[i + 1].x * SCALE - wp.x * SCALE : wp.x * SCALE - trackData.pitWaypoints[i - 1].x * SCALE;
-
-  const dy = (i < trackData.pitWaypoints.length - 1) ? trackData.pitWaypoints[i + 1].y * SCALE - wp.y * SCALE : wp.y * SCALE - trackData.pitWaypoints[i - 1].y * SCALE;
-
-  const angle = Math.atan2(dy, dx);
-
-  const perpAngle = angle + Math.PI / 2;
-
-  const offsetX = Math.cos(perpAngle) * (-PIT_LANE_WIDTH / 2);
-
-  const offsetY = Math.sin(perpAngle) * (-PIT_LANE_WIDTH / 2);
-
-  ctx.lineTo(x + offsetX, y + offsetY);
-
-}
-
-ctx.closePath();
-
-ctx.fill();
-
-ctx.strokeStyle = 'white';
-
-ctx.lineWidth = 2 * SCALE;
-
-ctx.beginPath();
-
-trackData.pitWaypoints.forEach((wp, index) =>  {
-
-  const x = wp.x * SCALE - player.x + W / 2;
-
-  const y = wp.y * SCALE - player.y + H / 2;
-
-  if (index === 0)  {
-
-    ctx.moveTo(x, y);
-
-  }
-else  {
-
-  ctx.lineTo(x, y);
-
-}
-
-});
-
-ctx.stroke();
-
-if (typeof RENDER_PARKING_INDEX !== 'undefined' && RENDER_PARKING_INDEX >= 0)  {
-
-  const trackData = TRACKS[currentTrack];
-
-  const wp = trackData.pitWaypoints[RENDER_PARKING_INDEX];
-
-  const bx = wp.x * SCALE - player.x + W / 2;
-
-  const by = wp.y * SCALE - player.y + H / 2;
-
-  const boxWidth = CARWIDTH * SCALE * 0.8;
-
-  const boxHeight = CARHEIGHT * SCALE * 0.8;
-
-  const xOffset = boxWidth / 2 + 40;
-
-  const gap = boxHeight * 1.1;
-
-  for (let i = 0;
-  i < 6;
-  i++)  {
-
-    const currentY = by + (i * gap);
-
-    const currentX = bx + xOffset;
-
-    ctx.fillStyle = '#555555';
-
-    ctx.fillRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
-
-    if (i === 0)  {
-
-      ctx.strokeStyle = '#00ffff';
-
-      ctx.lineWidth = 4;
-
+            // Box Label
+            ctx.fillStyle = (i === 0) ? "#00ffff" : "#aaa";
+            ctx.font = "bold 20px Rajdhani";
+            ctx.fillText(i === 0 ? "PIT BOX" : "TEAM " + i, currentX + 10, currentY - boxH/2 + 25);
+        }
     }
-  else  {
-
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-
-    ctx.lineWidth = 2;
-
-  }
-
-ctx.strokeRect(currentX - boxWidth / 2, currentY - boxHeight / 2, boxWidth, boxHeight);
-
-ctx.fillStyle = (i === 0) ? '#ff0000' : '#777';
-
-ctx.fillRect(currentX + boxWidth / 2 - 8, currentY - boxHeight / 2, 8, boxHeight);
-
-ctx.font = 'bold 16px Rajdhani';
-
-ctx.fillStyle = 'white';
-
-ctx.textAlign = 'center';
-
-if (i === 0)  {
-
-  ctx.fillText('PLAYER STOP', currentX - 10, currentY + 6);
-
+    ctx.restore();
 }
-else  {
 
-  ctx.font = '12px Rajdhani';
+// 3. Draw Grandstands (Crowd)
+if (grandstandImg.complete) {
+    const startY = trackData.start.y * SCALE - 1000;
+    const startX = trackData.start.x * SCALE - 600;
+    for(let i = 0; i < 15; i++) {
+        ctx.drawImage(grandstandImg, startX, startY + (i * grandstandImg.height * 0.45));
+    }
+}
 
-  ctx.fillText(`TEAM ${i + 1}`, currentX - 10, currentY + 5);
+// ★ boostParticles（世界層）
+ctx.save();
+boostParticles.forEach(p => {
+    const alpha = p.life / p.maxLife;
 
-}}}
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+
+    if (p.type === 'mirage') {
+        const a2 = p.life / p.maxLife;
+        ctx.globalAlpha = a2 * 0.5;
+
+        if (p.img && p.img.complete) {
+            ctx.rotate(Math.PI / 2);
+            const scale = 0.95;
+            const drawW = CARWIDTH * scale;
+            const drawH = CARHEIGHT * scale;
+            ctx.drawImage(p.img, -drawW / 2, -drawH / 2, drawW, drawH);
+        } else {
+            ctx.fillStyle = 'rgba(200, 255, 255, 0.8)';
+            ctx.fillRect(-p.length, -p.width / 2, p.length, p.width);
+        }
+    } else {
+        const len = p.length;
+        const w = p.width;
+
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-len, 0);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+});
+ctx.restore();
+
+
+
+
+ctx.save();
+
+tireMarks.forEach(mark => {
+    const alpha = Math.min(1, mark.life / 60);
+    const size = 10;
+    ctx.strokeStyle = `rgba(0, 0, 0, ${0.8 * alpha})`;
+    ctx.lineWidth = size;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(mark.x1, mark.y1);   // 世界座標
+    ctx.lineTo(mark.x2, mark.y2);   // 世界座標
+    ctx.stroke();
+});
+ctx.restore();
+
+ctx.save();
+
+dustParticles.forEach(p => {
+    const alpha = p.life / p.maxLife;
+    const size = alpha * 10;
+    const color = `rgba(180, 180, 180, ${alpha * 0.6})`;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size * 0.2, 0, Math.PI * 2);  // 世界座標
+    ctx.fill();
+});
 
 ctx.restore();
 
-}
+allCars.forEach(car => {
+    ctx.save();
+    ctx.translate(car.x, car.y);              // 世界座標
+    ctx.rotate(car.angle + Math.PI / 2);
+    if (car.img && car.img.complete) {
+        ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+    }
+    ctx.restore();
+});
 
-// --- Lifting Turn 中央大字 ---
-if (liftingTurnBannerTimer > 0) {
+// 這裡加 player（如果 player 唔喺 allCars 入面）
+ctx.save();
+ctx.translate(player.x, player.y);
+ctx.rotate(player.angle + Math.PI / 2);
+if (player.img && player.img.complete) {
+    ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+}
+ctx.restore();
+
+ctx.restore();
+// === Camera transform 結束 ===
+
+ // --- Lifting Turn 中央大字 ---
+  if (liftingTurnBannerTimer > 0) {
     liftingTurnBannerTimer--;
 
-    // 計算 alpha 做少少淡出效果
-    const t = liftingTurnBannerTimer / LIFTING_TURN_BANNER_DURATION; // 0~1
-    const alpha = Math.min(1, t * 1.5); // 開頭快啲去到 1, 之後慢慢跌
-
+    const t = liftingTurnBannerTimer / LIFTING_TURN_BANNER_DURATION;
+    const alpha = Math.min(1, t * 1.5);
     const text = "LIFTING TURN!";
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // 外框陰影
-    ctx.font = 'bold 150px Rajdhani, sans-serif';
+	const fontSize = Math.max(80, Math.min(W, H) * 0.15);  // ✅ 動態大小
+	ctx.font = `bold ${fontSize}px Rajdhani, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 先畫深色外框
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.strokeText(text, W / 2, H / 2);
 
-    // 再畫亮色字體
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.95)'; // 青色螢光感
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.95)';
     ctx.fillText(text, W / 2, H / 2);
 
     ctx.restore();
-}
+  }
 
-// --- Mirage Turn 中央大字 ---
-else if (mirageTurnBannerTimer > 0) {
+  // --- Mirage Turn 中央大字 ---
+  else if (mirageTurnBannerTimer > 0) {
     mirageTurnBannerTimer--;
-    const t = mirageTurnBannerTimer / MIRAGE_TURN_BANNER_DURATION; // 0~1
+
+    const t = mirageTurnBannerTimer / MIRAGE_TURN_BANNER_DURATION;
     const alpha = Math.min(1, t * 1.5);
     const text = "MIRAGE TURN!!";
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    ctx.font = 'bold 150px Rajdhani, sans-serif';
+	const fontSize = Math.max(80, Math.min(W, H) * 0.15);  // ✅ 動態大小
+	ctx.font = `bold ${fontSize}px Rajdhani, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 外框
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.strokeText(text, W / 2, H / 2);
 
-    // 內字：紫藍色螢光感
     ctx.fillStyle = 'rgba(150, 120, 255, 0.98)';
     ctx.fillText(text, W / 2, H / 2);
 
     ctx.restore();
-}
+  }
 
-// --- Comet Turn 中央大字 ---
-else if (cometTurnBannerTimer > 0) {
+  // --- Comet Turn 中央大字 ---
+  else if (cometTurnBannerTimer > 0) {
     cometTurnBannerTimer--;
-    const t = cometTurnBannerTimer / COMET_TURN_BANNER_DURATION; // 0~1
+
+    const t = cometTurnBannerTimer / COMET_TURN_BANNER_DURATION;
     const alpha = Math.min(1, t * 1.5);
     const text = "COMET TURN!!";
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    ctx.font = 'bold 150px Rajdhani, sans-serif';
+	const fontSize = Math.max(80, Math.min(W, H) * 0.15);  // ✅ 動態大小
+	ctx.font = `bold ${fontSize}px Rajdhani, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 外框
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(120, 0, 0, 0.9)';
     ctx.strokeText(text, W / 2, H / 2);
 
-    // 內字：紫藍色螢光感
     ctx.fillStyle = 'rgba(255, 60, 60, 0.98)';
     ctx.fillText(text, W / 2, H / 2);
 
     ctx.restore();
-}
+  }
 
-// --- Comet Evo 中央大字 ---
-else if (cometEvoBannerTimer > 0) {
+  // --- Comet Evo 中央大字 ---
+  else if (cometEvoBannerTimer > 0) {
     cometEvoBannerTimer--;
-    const t = cometEvoBannerTimer / COMET_EVO_BANNER_DURATION; // 0~1
+
+    const t = cometEvoBannerTimer / COMET_EVO_BANNER_DURATION;
     const alpha = Math.min(1, t * 1.5);
     const text = "COMET EVOLUTION!!";
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    ctx.font = 'bold 80px Rajdhani, sans-serif';
+	const fontSize = Math.max(80, Math.min(W, H) * 0.15);  // ✅ 動態大小
+	ctx.font = `bold ${fontSize}px Rajdhani, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 外框
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(0,0,0,0.85)';
     ctx.strokeText(text, W / 2, H / 2);
 
-    // 內字：紫藍色螢光感
     ctx.fillStyle = 'rgba(255, 60, 60, 0.98)';
     ctx.fillText(text, W / 2, H / 2);
 
     ctx.restore();
-}
-
-
-if (isBoosting)  {
-
-  let grd = ctx.createRadialGradient(W/2, H/2, W/4, W/2, H/2, W/1.2);
-
-  grd.addColorStop(0, 'transparent');
-
-  grd.addColorStop(1, 'rgba(0, 255, 255, 0.15)');
-
-  ctx.fillStyle = grd;
-
-  ctx.fillRect(0, 0, W, H);
-
-}
-
-if (isBoosting && !lastIsBoosting)  {
-
-  modeNotifyText = "AERO MODE";
-
-  modeNotifyTimer = 60;
-
-}
-
-lastIsBoosting = isBoosting;
-
-ctx.save();
-
-tireMarks.forEach(mark =>  {
-
-  const alpha = Math.min(1, mark.life / 60);
-
-  const size = 10;
-
-  ctx.strokeStyle = `rgba(0, 0, 0, ${0.8 * alpha})`;
-
-  ctx.lineWidth = size;
-
-  ctx.lineCap = 'round';
-
-  ctx.beginPath();
-
-  ctx.moveTo(mark.x1 - offsetX, mark.y1 - offsetY);
-
-  ctx.lineTo(mark.x2 - offsetX, mark.y2 - offsetY);
-
-  ctx.stroke();
-
-});
-
-ctx.restore();
-
-ctx.save();
-
-dustParticles.forEach(p =>  {
-
-  const alpha = p.life / p.maxLife;
-
-  const size = alpha * 10;
-
-  const color = `rgba(180, 180, 180, ${alpha * 0.6})`;
-
-  ctx.fillStyle = color;
-
-  ctx.beginPath();
-
-  ctx.arc(p.x - offsetX, p.y - offsetY, size / 2, 0, Math.PI * 2);
-
-  ctx.fill();
-
-});
-
-ctx.restore();
-
-allCars.forEach(car =>  {
-
-  ctx.save();
-
-  ctx.translate(car.x - offsetX, car.y - offsetY);
-
-  ctx.rotate(car.angle + Math.PI / 2);
-
-  if (car.img && car.img.complete)  {
-
-    ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
-
   }
 
-ctx.restore();
+  // --- Boost 藍色光暈（螢幕層） ---
+  if (isBoosting) {
+    let grd = ctx.createRadialGradient(W/2, H/2, W/4, W/2, H/2, W/1.2);
+    grd.addColorStop(0, 'transparent');
+    grd.addColorStop(1, 'rgba(0, 255, 255, 0.15)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+  }
 
-});
 
 if (gameState === 'racing' && !raceFinished)  {
 
@@ -3001,64 +3260,6 @@ dustParticles = dustParticles.filter(p =>  {
 
 });
 
-ctx.save();
-
-boostParticles.forEach(p => {
-    const alpha = p.life / p.maxLife;
-
-    ctx.save();
-    ctx.translate(p.x - offsetX, p.y - offsetY);
-    ctx.rotate(p.angle);
-
-	if (p.type === 'mirage') {
-		const alpha = p.life / p.maxLife;
-
-		ctx.globalAlpha = alpha * 0.5;
-
-		// 用原本車圖做幽靈殘影
-		if (p.img && p.img.complete) {
-			// 跟車一樣：加上 Math.PI/2
-			ctx.rotate( Math.PI / 2);
-
-			// 可以稍為縮細少少，免得太實
-			const scale = 0.95;
-			const drawW = CARWIDTH  * scale;
-			const drawH = CARHEIGHT * scale;
-
-			ctx.drawImage(
-				p.img,
-				-drawW / 2,
-				-drawH / 2,
-				drawW,
-				drawH
-			);
-		} else {
-			// 後備：如果圖未 load 完，就用之前個白色矩形
-			ctx.fillStyle = 'rgba(200, 255, 255, 0.8)';
-			ctx.fillRect(
-				-p.length,
-				-p.width / 2,
-				p.length,
-				p.width
-			);
-		}
-    } else {
-        // 原本 flame / airflow 那種光線
-        const len = p.length;
-        const w   = p.width;
-
-        ctx.globalAlpha = alpha;
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth   = w;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-len, 0);
-        ctx.stroke();
-    }
-
-    ctx.restore();
-});
-
 
 ctx.save();
 
@@ -3066,60 +3267,6 @@ ctx.translate(W / 2, H / 2);
 
 ctx.rotate(player.angle + Math.PI / 2);
 
-if (typeof isBoosting !== 'undefined' && isBoosting) {
-  const podOffset = 18;  // 從車邊內縮 2px，避免突出車外
-  const podW = 8;       // 噴射器寬度變窄（原 12 → 8）
-  const podH = 35;      // 高度不變
-  const carW = CARWIDTH;
-  const carH = CARHEIGHT;
-
-  // 計算左右噴射器位置（完全在車身內）
-  const leftPodX = -carW / 2 + podOffset;
-  const rightPodX = carW / 2 - podW - podOffset;
-  const leftPodCenter = leftPodX + podW / 2;
-  const rightPodCenter = rightPodX + podW / 2;
-
-  // 畫深灰色噴射器外殼（現在完全貼車邊內側，不突出）
-  ctx.fillStyle = '#333';
-  ctx.fillRect(leftPodX, carH / 2 - 40, podW, podH);
-  ctx.fillRect(rightPodX, carH / 2 - 40, podW, podH);
-
-  // 火焰高度（隨機閃爍）
-  const flameHeight = 40 + Math.random() * 20;
-
-  // 漸層：青藍色火焰漸變透明
-  const gradient = ctx.createLinearGradient(0, carH / 2, 0, carH / 2 + flameHeight);
-  gradient.addColorStop(0, '#00ffff');
-  gradient.addColorStop(0.5, 'rgba(0, 150, 255, 0.8)');
-  gradient.addColorStop(1, 'transparent');
-  ctx.fillStyle = gradient;
-
-  // 左火焰：從噴射器中心開始，向下張開（寬度變窄，spread 從 ~6 → 4）
-  const flameSpread = 4;
-  ctx.beginPath();
-  ctx.moveTo(leftPodCenter, carH / 2 - 5);
-  ctx.lineTo(leftPodCenter - flameSpread, carH / 2 + flameHeight);
-  ctx.lineTo(leftPodCenter + flameSpread, carH / 2 + flameHeight);
-  ctx.fill();
-
-  // 右火焰：完全對稱
-  ctx.beginPath();
-  ctx.moveTo(rightPodCenter, carH / 2 - 5);
-  ctx.lineTo(rightPodCenter + flameSpread, carH / 2 + flameHeight);
-  ctx.lineTo(rightPodCenter - flameSpread, carH / 2 + flameHeight);
-  ctx.fill();
-
-  // 白色高溫核心（噴射口，位置調整到中心）
-  ctx.fillStyle = 'white';
-  ctx.fillRect(leftPodCenter - 2, carH / 2 - 5, 4, 10);
-  ctx.fillRect(rightPodCenter - 2, carH / 2 - 5, 4, 10);
-}
-
-if (player.img && player.img.complete && player.img.naturalWidth > 0) {
-  let shakeX = isBoosting ? (Math.random() - 0.5) * 2 : 0;
-  let shakeY = isBoosting ? (Math.random() - 0.5) * 2 : 0;
-  ctx.drawImage(player.img, -CARWIDTH / 2 + shakeX, -CARHEIGHT / 2 + shakeY, CARWIDTH, CARHEIGHT);
-} 
 
 ctx.restore();
 
@@ -3248,8 +3395,9 @@ else  {
 
   player.sideSpeed = 0;
 
+  if (!playerAutoDriving && !inPit) {
   document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
-
+  }
   playerPitWaypointIndex = 0;
 
 }
@@ -3258,21 +3406,20 @@ else  {
 
 else if (trackData.pitEntry && !playerAutoDriving)  {
 
-  const unscaledPlayerX = player.x / SCALE;
+const playerX = player.x;
+const playerY = player.y;
+const entryX = trackData.pitEntry.x * SCALE; // Scale the entry point to match player.x
+const entryY = trackData.pitEntry.y * SCALE;
 
-  const unscaledPlayerY = player.y / SCALE;
+const dx = playerX - entryX;
+const dy = playerY - entryY;
+const distToEntry = Math.hypot(dx, dy);
 
-  const pitHudPrompt = document.getElementById('pitHudPrompt');
+const PIT_ENTRY_TRIGGER_DIST = 150 * SCALE;
 
-  const PIT_ENTRY_TRIGGER_DIST = 120;
+const pitHudPrompt = document.getElementById('pitHudPrompt');
 
-  const dx = unscaledPlayerX - trackData.pitEntry.x;
-
-  const dy = unscaledPlayerY - trackData.pitEntry.y;
-
-  const distToEntry = Math.hypot(dx, dy);
-
-  if (distToEntry < PIT_ENTRY_TRIGGER_DIST && (wantsToPit || playerAvgHealth < 20))  {
+   if (distToEntry < PIT_ENTRY_TRIGGER_DIST && (wantsToPit || playerAvgHealth < 20))  {
 
     playerAutoDriving = true;
 
@@ -3280,24 +3427,20 @@ else if (trackData.pitEntry && !playerAutoDriving)  {
 
     inPit = false;
 
-    keys =  {
+    keys =  { };
 
-    };
+    touch =  { };
 
-  touch =  {
+	wantsToPit = false;
 
-  };
+	if (pitHudPrompt) pitHudPrompt.style.display = 'none';
 
-wantsToPit = false;
+	document.getElementById('lapHud').textContent = `PIT LANE - ENTERING`;
 
-if (pitHudPrompt) pitHudPrompt.style.display = 'none';
-
-document.getElementById('lapHud').textContent = `PIT LANE - ENTERING`;
-
-}
+	}
  
 
-else if (wantsToPit)  {
+if (wantsToPit)  {
 
   if (pitHudPrompt)  {
 
@@ -3843,11 +3986,13 @@ const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
 
 const pos = sorted.findIndex(c => c === player) + 1;
 
-document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+if (!playerAutoDriving && !inPit) {
+    document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+}
 
 document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
 
-document.getElementById('speedHud').textContent = `${Math.round(Math.abs(player.speed) * 15)} kmh`;
+// ===== 世界層結束 =====
 
 }
  
@@ -3887,8 +4032,9 @@ if (inPit)  {
 
       playerAutoDriving = false;
 
+	  if (!playerAutoDriving && !inPit) {
       document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
-
+	  }
     }
 
 }
@@ -3917,6 +4063,8 @@ if (playerAvgHealth <= CRITICAL_HEALTH && gameState === 'racing')  {
 
 }
 
+
+
 if (gameState !== "title")  {
 
   drawSingleAIAvatar(ctx);
@@ -3930,85 +4078,81 @@ if (gameState === 'racing') {
 
   updateAIAvatarByCarName(carNameLower);
 
-  let aiPrefix = "▶ AI: ";
-  if (carNameLower.includes("asurada")) aiPrefix = "▶ ASURADA: ";
-  else if (carNameLower.includes("garland")) aiPrefix = "▶ GARLAND: ";
-  else if (carNameLower.includes("ogre")) aiPrefix = "▶ OGRE: ";
-  else if (carNameLower.includes("al-zard")) aiPrefix = "▶ AL-ZARD: ";
-  else if (carNameLower.includes("ex-zard")) aiPrefix = "▶ EX-ZARD: ";
+        // 1. Define the Prefix first so it is never "undefined"
+        let aiPrefix = `▶ ${currentAIName || "SYSTEM"}: `; 
+        let aiMsg = "";
 
-  let aiMsg = "";
+ 
+// 原有的繪圖邏輯完全不變
+// AI message + BOOST banner（會跟 W/H 縮放）
+if (aiMsg !== "" || isBoosting) {
+  ctx.save();
 
-  // 🔥 原有優先級（保持不變）
-  if (inPit) aiMsg = "SYSTEM CHECK... ALL UNITS GO.";
-  else if (isBoosting) aiMsg = "BOOST ON! PRESSURE CRITICAL!";
-  else if (tireHealth.some(h => h < 30)) aiMsg = "CAUTION: TIRE GRIP IS DOWN.";
-  else if (wantsToPit) aiMsg = "PIT-IN STRATEGY CONFIRMED.";
-  else if (liftingTurnActive) aiMsg = "CAUTION! Lifting Turn Active!!!";
-  
-  
-  // 🔥 Aero Mode 通知（最低優先級，只在其他條件都不符合時顯示）
-  else if (modeNotifyTimer > 0) {
-    aiMsg = `Mode change: ${currentMode} Mode`;
+  const boxW = W * 0.6;             // 佔畫面闊度 60%
+  const boxH = H * 0.08;            // 佔畫面高度 10%
+  const boxX = (W - boxW) / 2;      // 水平置中
+  const boxY = H * 0.08;            // 頂部 HUD 下少少
+
+  ctx.fillStyle = "rgba(0, 15, 30, 0.85)";
+  ctx.strokeStyle = isBoosting ? "#ff00ff" : "#00ffff";
+  ctx.lineWidth = 2.5;
+
+  ctx.beginPath();
+  ctx.moveTo(boxX, boxY);
+  ctx.lineTo(boxX + boxW - 40, boxY);
+  ctx.lineTo(boxX + boxW,     boxY + 40);
+  ctx.lineTo(boxX + boxW,     boxY + boxH);
+  ctx.lineTo(boxX + 40,       boxY + boxH);
+  ctx.lineTo(boxX,            boxY + boxH - 40);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 左側燈條
+  ctx.fillStyle = (Date.now() % 500 < 250) ? "#00ffff" : "rgba(0, 255, 255, 0.5)";
+  ctx.fillRect(boxX + 12, boxY + 12, 6, boxH - 24);
+
+  // 右上亂碼 debug
+  ctx.save();
+  const debugFont = Math.max(10, H * 0.012);
+  ctx.font = `bold ${debugFont}px monospace`;
+  ctx.fillStyle = "rgba(0, 255, 255, 0.6)";
+  ctx.textAlign = "right";
+  for (let j = 0; j < 4; j++) {
+    const hex = "0x" + Math.random().toString(16).toUpperCase().substring(2, 6);
+    ctx.fillText(hex, boxX + boxW - 12, boxY + 20 + j * (debugFont + 2));
   }
+  ctx.restore();
+}
+       // 2. Logic to determine what the AI says
+        if (modeNotifyTimer > 0) {
+            aiMsg = modeNotifyText;
+            // The timer is handled at the end of the loop or here
+            modeNotifyTimer--; 
+        } 
+        else if (cyberSystemActive) {
+            // Context-sensitive chatter when System Link is ON
+            if (Math.abs(player.sideSpeed) > 6) aiMsg = "COMPENSATING FOR DRIFT ANGLE...";
+            else if (isBoosting) aiMsg = "ALL VENTS OPEN. MAXIMUM THRUST.";
+            else if (offTrackFactor < 1.0) aiMsg = "WARNING. TRACTION LOSS DETECTED.";
+            else aiMsg = "MONITORING CHASSIS STABILITY...";
+        } 
+        else if (inPit) {
+            aiMsg = "SYSTEM CHECK... ALL UNITS GO.";
+        } 
+        else if (isBoosting) {
+            aiMsg = "BOOST ON! PRESSURE CRITICAL!";
+        } 
+        else if (tireHealth.some(h => h < 30)) {
+            aiMsg = "CAUTION: TIRE GRIP IS DIMINISHING.";
+        }
 
-  // 原有的繪圖邏輯完全不變
-  if (aiMsg !== "" || isBoosting) {
-    ctx.save();
-    const boxW = 520;
-    const boxH = 80;
-    const boxX = 475;
-    const boxY = H - 270;
-    
-    ctx.fillStyle = "rgba(0, 15, 30, 0.85)";
-    ctx.strokeStyle = isBoosting ? "#ff00ff" : "#00ffff";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(boxX, boxY);
-    ctx.lineTo(boxX + boxW - 40, boxY);
-    ctx.lineTo(boxX + boxW, boxY + 40);
-    ctx.lineTo(boxX + boxW, boxY + boxH);
-    ctx.lineTo(boxX + 40, boxY + boxH);
-    ctx.lineTo(boxX, boxY + boxH - 40);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+        // 3. Draw the box ONLY if there is a message to show
+        if (aiMsg !== "") {
+            drawAIMessageBox(ctx, aiMsg, aiPrefix, isBoosting);
+        }
 
-    ctx.fillStyle = (Date.now() % 500 < 250) ? "#00ffff" : "rgba(0, 255, 255, 0.5)";
-    ctx.fillRect(boxX + 15, boxY + 15, 8, boxH - 30);
 
-    ctx.save();
-    ctx.font = "bold 10px monospace";
-    ctx.fillStyle = "rgba(0, 255, 255, 0.6)";
-    ctx.textAlign = "right";
-    for (let j = 0; j < 5; j++) {
-      const hex = "0x" + Math.random().toString(16).toUpperCase().substring(2, 6);
-      ctx.fillText(hex, boxX + boxW - 15, boxY + 25 + (j * 10));
-    }
-    ctx.globalAlpha = Math.random();
-    ctx.fillStyle = "#00ffff";
-    ctx.fillRect(boxX + boxW - 5, boxY + 10, 2, boxH - 20);
-    ctx.restore();
-
-    ctx.shadowBlur = 12;
-    ctx.shadowColor = "#00ffff";
-    ctx.font = "bold 28px 'Rajdhani'";
-    ctx.fillStyle = "#fbff00";
-    ctx.textAlign = "left";
-    ctx.fillText(aiPrefix, boxX + 40, boxY + 50);
-
-    ctx.font = "26px 'Rajdhani'";
-    ctx.fillStyle = "#ffffff";
-    const prefixWidth = ctx.measureText(aiPrefix).width;
-    
-    let displayMsg = aiMsg;
-    if (isBoosting && aiMsg === "BOOST ON! PRESSURE CRITICAL!") {
-      displayMsg = "AERO MODE / BOOST ON";
-    }
-    
-    ctx.fillText(displayMsg, boxX + 45 + prefixWidth, boxY + 50);
-    ctx.restore();
-  }
 }
 }
 
@@ -4046,47 +4190,21 @@ ctx.restore();
 
 }
 
-// 在 loop() 最後，取代右上角版本
-if (gameState === 'racing') {
-  ctx.save();
-  ctx.font = "bold 14px Rajdhani";  // 字體小一點
-  ctx.fillStyle = "#00ff00";        // 綠色不刺眼
-  ctx.textAlign = "left";           // 左對齊
-  ctx.shadowBlur = 6;
-  ctx.shadowColor = "#00ff00";
-  
-  let yPos = 30;  // 從頂部 30px 開始
-  
-  // Player 車速（最上方）
-  ctx.fillStyle = "#ffff00";  // Player 用黃色突出
-  ctx.fillText(`PLAYER: ${player?.speed?.toFixed(1) || 0}/${(player?.maxSpeedLimit || 0)?.toFixed(1)} ${player?.isAeroMode ? '[AERO]' : ''}`, 20, yPos);
-  yPos += 22;
-  
-  // Top 3 AI（綠色）
-  ctx.fillStyle = "#00ff00";
-  const aiSpeeds = allCars
-    .map((car, i) => ({
-      speed: car.speed || 0,
-      max: car.maxSpeedLimit || 0,
-      aero: car.isAeroMode,
-      name: car.spec?.image?.split('/').pop()?.replace('.png', '')?.slice(0, 12) || `AI${i}`  // 名字截斷
-    }))
-    .sort((a, b) => b.speed - a.speed)
-    .slice(0, 3);
-  
-  aiSpeeds.forEach((ai, i) => {
-    const aeroMark = ai.aero ? '[AERO]' : '';
-    ctx.fillText(`${i+1}. ${ai.name}: ${ai.speed.toFixed(1)}/${ai.max.toFixed(1)}${aeroMark}`, 20, yPos);
-    yPos += 18;
-  });
-  
-  ctx.restore();
-}
-
-
 if (gameState !== 'title')  {
 
-  drawMinimap();
+    // Apply Off-track check
+    checkOffTrack(player);
+    
+    // Apply Cyber System Logic
+    updateCyberSystemLogic();
+
+    // Modify player speed based on off-track factor
+    player.forwardSpeed *= offTrackFactor; 
+
+    // Performance: Only draw minimap every 2 frames
+    if (Math.floor(Date.now() / 16) % 2 === 0) {
+        drawMinimap();
+    }
 
  // Aero 系統更新
   if (player) {
@@ -4170,31 +4288,12 @@ document.getElementById('backToMenuBtn').onclick = () =>  {
 
 };
 
-if ('ontouchstart' in window && navigator.maxTouchPoints > 0 && screen.width <= 1024)  {
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
-  document.getElementById('mobileControls').style.display = 'flex';
-
-  ['Up', 'Down', 'Left', 'Right'].forEach(d =>  {
-
-    const b = document.getElementById(`btn${d}`);
-
-    b.addEventListener('touchstart', e =>  {
-
-      e.preventDefault();
-
-      touch[d.toLowerCase()] = true;
-
-    }
-  );
-
-  b.addEventListener('touchend', () =>  {
-
-    touch[d.toLowerCase()] = false;
-
-  });
-
-});
-
+if (isTouch) {
+  // 只負責顯示 control panel
+  const mc = document.getElementById('mobileControls');
+  if (mc) mc.style.display = 'flex';
 }
 
 const pitBtn = document.getElementById('pitBtn');
@@ -4237,6 +4336,12 @@ window.addEventListener('keydown', e => {
     if (e.code === 'Space' || e.code === 'KeyX') {
         e.preventDefault();
         keys['Space'] = true;
+    }
+	
+    if (e.key.toLowerCase() === 'p') {
+        if (gameState === 'racing' && !playerAutoDriving) {
+            wantsToPit = true;
+        }
     }
 });
 
