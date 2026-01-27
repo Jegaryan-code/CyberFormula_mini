@@ -45,27 +45,6 @@ let offTrackFactor = 1.0;
 let W = canvas.width;
 let H = canvas.height;
 
-function resizeCanvas() {
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = window.innerWidth;
-    const cssH = window.innerHeight;
-    
-    // Scale for high resolution screens
-    canvas.width = cssW * dpr;
-    canvas.height = cssH * dpr;
-    W = cssW;
-    H = cssH;
-    
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // Hide mobile controls on PC
-    const isMobile = window.matchMedia("(pointer: coarse)").matches;
-    document.getElementById('mobileControls').style.display = isMobile ? 'flex' : 'none';
-}
-
-window.addEventListener('resize', resizeCanvas);
-window.addEventListener('orientationchange', resizeCanvas);
-resizeCanvas();  // 一入頁就 fit browser
 
 
   const AI_AVATAR_MAP = [
@@ -215,6 +194,38 @@ let countdownStartTime = 0;
 const tireMonitorCanvas = document.getElementById('tireMonitorCanvas');
 
 const tireMonitorCtx = tireMonitorCanvas ? tireMonitorCanvas.getContext('2d') : null;
+
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = window.innerWidth;
+    const cssH = window.innerHeight;
+    
+    // Scale for high resolution screens
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    W = cssW;
+    H = cssH;
+    
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Hide mobile controls on PC
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
+    document.getElementById('mobileControls').style.display = isMobile ? 'flex' : 'none';
+	
+    // Resize Tire Monitor internal resolution
+    const tireContainer = document.getElementById('tireMonitorContainer');
+    if (tireMonitorCanvas && tireContainer) {
+        const rect = tireContainer.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        tireMonitorCanvas.width = rect.width * dpr;
+        tireMonitorCanvas.height = rect.height * dpr;
+    }	
+}
+
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', resizeCanvas);
+resizeCanvas();  // 一入頁就 fit browser
+
 
 // 全域狀態
 let aeroModeActive = false;
@@ -2442,76 +2453,70 @@ i++)  {
 
 }
  
-function drawTireMonitor(car, ctx)  {
+function drawTireMonitor(car, ctx) {
+    if (!ctx) return;
 
-  if (!ctx) return;
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const dpr = window.devicePixelRatio || 1;
 
-  if (!car.tireHealth)  {
+    if (!car.tireHealth) {
+        car.tireHealth = [100, 100, 100, 100];
+    }
 
-    car.tireHealth = [100, 100, 100, 100];
+    ctx.clearRect(0, 0, w, h);
 
-  }
+    // Proportional dimensions
+    const carBodyW = w * 0.4;
+    const carBodyH = h * 0.7;
+    const tireW = w * 0.15;
+    const tireH = h * 0.22;
 
-ctx.clearRect(0, 0, 100, 100);
+    // 1. Draw "Car Chassis" Placeholder
+    ctx.fillStyle = '#444444';
+    ctx.fillRect((w - carBodyW) / 2, h * 0.1, carBodyW, carBodyH);
 
-ctx.fillStyle = '#444444';
+    const health = car.tireHealth;
+    const getColor = (h) => {
+        if (h > 60) return '#00FF00';
+        if (h > 30) return '#FFFF00';
+        return '#FF0000';
+    };
 
-ctx.fillRect(30, 10, 40, 80);
+    // 2. Responsive Tire Positions
+    // [FL, FR, RL, RR]
+    const positions = [
+        { x: w * 0.1, y: h * 0.12 }, // Front Left
+        { x: w * 0.75, y: h * 0.12 }, // Front Right
+        { x: w * 0.1, y: h * 0.58 }, // Rear Left
+        { x: w * 0.75, y: h * 0.58 }  // Rear Right
+    ];
 
-const health = car.tireHealth;
+    positions.forEach((pos, index) => {
+        const tireHealthVal = health[index];
+        
+        // Draw Tire Background (Green/Yellow/Red)
+        ctx.fillStyle = getColor(tireHealthVal);
+        ctx.fillRect(pos.x, pos.y, tireW, tireH);
 
-const getColor = (h) =>  {
+        // Draw Wear Overlay (Black bar growing from top)
+        const wearHeight = tireH * (100 - tireHealthVal) / 100;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(pos.x, pos.y, tireW, wearHeight);
 
-  if (h > 60) return '#00FF00';
+        // Tire Border
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1 * dpr;
+        ctx.strokeRect(pos.x, pos.y, tireW, tireH);
+    });
 
-  if (h > 30) return '#FFFF00';
-
-  return '#FF0000';
-
-};
-
-const positions = [
-{  x: 10, y: 15, h: 20, w: 10}, 
-{  x: 80, y: 15, h: 20, w: 10}, 
-{  x: 10, y: 65, h: 20, w: 10}, 
-{  x: 80, y: 65, h: 20, w: 10}];
-
-positions.forEach((pos, index) =>  {
-
-  ctx.fillStyle = getColor(health[index]);
-
-  ctx.fillRect(pos.x, pos.y, pos.w, pos.h);
-
-  const wearHeight = pos.h * (100 - health[index]) / 100;
-
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-
-  ctx.fillRect(pos.x, pos.y, pos.w, wearHeight);
-
-  ctx.strokeStyle = 'white';
-
-  ctx.strokeRect(pos.x, pos.y, pos.w, pos.h);
-
-});
-
-const avg = health.reduce((a, b) => a + b, 0) / 4;
-
-ctx.font = '10px Arial';
-
-ctx.fillStyle = getColor(avg);
-
-ctx.textAlign = 'center';
-
-ctx.fillText(`AVG: ${Math.round(avg)}%`, 50, 98);
-
-}
-
-if (gameState !== 'title')  {
-
-  drawMinimap(ctx, W, H);
-
-  drawTireMonitor(ctx, W, H);
-
+    // 3. Dynamic Text Size
+    const avg = health.reduce((a, b) => a + b, 0) / 4;
+    const fontSize = Math.max(10, Math.floor(h * 0.12));
+    ctx.font = `bold ${fontSize}px Rajdhani, Arial`;
+    ctx.fillStyle = getColor(avg);
+    ctx.textAlign = 'center';
+    ctx.fillText(`TIRE: ${Math.round(avg)}%`, w / 2, h * 0.95);
 }
 
 function drawSingleAIAvatar(ctx) {
@@ -3037,6 +3042,33 @@ else  {
 
 followWaypoints(car);
 
+}
+
+// ==========================================
+// IMPROVED AI PIT DECISION LOGIC
+// ==========================================
+const aiAvgH = car.tireHealth.reduce((a, b) => a + b, 0) / 4;
+
+// 1. AI decides they NEED to pit
+if (aiAvgH < MUST_PIT_THRESHOLD && car.pitCondition === 'out') {
+    car.aiWantsToPit = true;
+}
+
+if (car.aiWantsToPit && car.pitCondition === 'out') {
+    // 2. Aim for the side of the track where the pit is (usually left or right lane)
+    // We force their lane offset so they are in position to hit the entry trigger
+    car.laneOffset = -150; // Force them to the inside lane
+
+    if (trackData.pitEntry) {
+        const d = Math.hypot((car.x/SCALE) - trackData.pitEntry.x, (car.y/SCALE) - trackData.pitEntry.y);
+        
+        // 3. Trigger Pit Entry (Increase distance to 300 to make it easier to hit)
+        if (d < 300) { 
+            car.pitCondition = 'entering'; 
+            car.pitWaypointIndex = 0; 
+            car.aiWantsToPit = false; // Reset flag
+        }
+    }
 }
 
 car.forwardSpeed *= FORWARD_DAMPING_AI;
@@ -4152,6 +4184,29 @@ if (aiMsg !== "" || isBoosting) {
             drawAIMessageBox(ctx, aiMsg, aiPrefix, isBoosting);
         }
 
+// ==========================================
+        // DEBUG: AI PIT STATUS (Top Left corner)
+        // ==========================================
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to draw on screen
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)"; // Dark background for readability
+        ctx.fillRect(10, 200, 250, allCars.length * 18 + 10);
+        
+        ctx.font = "bold 12px Rajdhani";
+        ctx.textAlign = "left";
+
+        allCars.forEach((car, i) => {
+            const avgH = Math.round(car.tireHealth.reduce((a, b) => a + b, 0) / 4);
+            const state = car.pitCondition.toUpperCase();
+            
+            // Color logic: Red if tire is low, Cyan if pitting
+            ctx.fillStyle = (avgH < 30) ? "#ff4444" : "#ffffff";
+            if (state !== 'OUT') ctx.fillStyle = "#00ffff";
+
+            const name = car.spec.image.split('/').pop().replace('.png', '').slice(0, 10);
+            ctx.fillText(`${i+1}. ${name}: ${avgH}% HP | STATE: ${state}`, 20, 220 + (i * 18));
+        });
+        ctx.restore();
 
 }
 }
