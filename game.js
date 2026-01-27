@@ -4183,31 +4183,6 @@ if (aiMsg !== "" || isBoosting) {
         if (aiMsg !== "") {
             drawAIMessageBox(ctx, aiMsg, aiPrefix, isBoosting);
         }
-
-// ==========================================
-        // DEBUG: AI PIT STATUS (Top Left corner)
-        // ==========================================
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to draw on screen
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)"; // Dark background for readability
-        ctx.fillRect(10, 200, 250, allCars.length * 18 + 10);
-        
-        ctx.font = "bold 12px Rajdhani";
-        ctx.textAlign = "left";
-
-        allCars.forEach((car, i) => {
-            const avgH = Math.round(car.tireHealth.reduce((a, b) => a + b, 0) / 4);
-            const state = car.pitCondition.toUpperCase();
-            
-            // Color logic: Red if tire is low, Cyan if pitting
-            ctx.fillStyle = (avgH < 30) ? "#ff4444" : "#ffffff";
-            if (state !== 'OUT') ctx.fillStyle = "#00ffff";
-
-            const name = car.spec.image.split('/').pop().replace('.png', '').slice(0, 10);
-            ctx.fillText(`${i+1}. ${name}: ${avgH}% HP | STATE: ${state}`, 20, 220 + (i * 18));
-        });
-        ctx.restore();
-
 }
 }
 
