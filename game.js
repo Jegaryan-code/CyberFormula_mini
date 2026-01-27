@@ -3044,33 +3044,6 @@ followWaypoints(car);
 
 }
 
-// ==========================================
-// IMPROVED AI PIT DECISION LOGIC
-// ==========================================
-const aiAvgH = car.tireHealth.reduce((a, b) => a + b, 0) / 4;
-
-// 1. AI decides they NEED to pit
-if (aiAvgH < MUST_PIT_THRESHOLD && car.pitCondition === 'out') {
-    car.aiWantsToPit = true;
-}
-
-if (car.aiWantsToPit && car.pitCondition === 'out') {
-    // 2. Aim for the side of the track where the pit is (usually left or right lane)
-    // We force their lane offset so they are in position to hit the entry trigger
-    car.laneOffset = -150; // Force them to the inside lane
-
-    if (trackData.pitEntry) {
-        const d = Math.hypot((car.x/SCALE) - trackData.pitEntry.x, (car.y/SCALE) - trackData.pitEntry.y);
-        
-        // 3. Trigger Pit Entry (Increase distance to 300 to make it easier to hit)
-        if (d < 300) { 
-            car.pitCondition = 'entering'; 
-            car.pitWaypointIndex = 0; 
-            car.aiWantsToPit = false; // Reset flag
-        }
-    }
-}
-
 car.forwardSpeed *= FORWARD_DAMPING_AI;
 
 car.speed = Math.hypot(car.forwardSpeed || 0, car.sideSpeed || 0);
