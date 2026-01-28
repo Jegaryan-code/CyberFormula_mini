@@ -11,7 +11,7 @@ const CARSPECS = [
   { image: "1. SUGO/Garland.png", acceleration: 5.25, handling: 0.8 , hasAero: false, hasBoost: false, turn: "none", driver: "Kazami"},
   { image: "1. SUGO/Garland_B.png", acceleration: 5.2, handling: 0.8 , hasAero: false, hasBoost: false, turn: "none", driver: "Henri"},
 
-  { image: "2. AOI/Superion_GT.png", acceleration: 4.8, handling: 0.7 , hasAero: false, hasBoost: true, turn: "none", driver: "Shinjo"},
+  { image: "2. AOI/Fire Superion_GTR.png", acceleration: 4.8, handling: 0.7 , hasAero: false, hasBoost: true, turn: "none", driver: "Shinjo"},
   { image: "2. AOI/Ex-Superion_ZA-8_B.png", acceleration: 5.0, handling: 0.75 , hasAero: true, hasBoost: true, turn: "none", driver: "Shinjo"},
   
   { image: "2. AOI/Stealth Jaguar Z-7.png", acceleration: 4.7, handling: 0.7 , hasAero: false, hasBoost: false, turn: "none", driver: "Kaga"},
@@ -58,6 +58,7 @@ const CARSPECS = [
   { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.2, handling: 0.75 , hasAero: true, hasBoost: true, turn: "comet", driver: "Toma",teamLogo: "team/single/Phoenix.webp"},
   { image: "6. OTHERS SINGLE RACER/Advanced_Phoenix.png", acceleration: 5.3, handling: 0.85 , hasAero: true, hasBoost: true, turn: "comet_evo", driver: "Toma", teamLogo: "team/single/Phoenix.webp"}
 ];
+
 
 
 
