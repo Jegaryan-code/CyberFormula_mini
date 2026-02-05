@@ -45,9 +45,7 @@ let offTrackFactor = 1.0;
 let W = canvas.width;
 let H = canvas.height;
 
-
-
-  const AI_AVATAR_MAP = [
+const AI_AVATAR_MAP = [
   {key: "asurada", img: "ai/AI_ASURADA.png", name: "ASURADA"},
   {key: "garland", img: "ai/AI_Garland.png", name: "GARLAND"},
   {key: "ogre", img: "ai/AI_OGRE.png", name: "OGRE" },
@@ -66,13 +64,8 @@ let player = null, allCars = [], gameState = 'title', mode = '', countdown = 0;
 
 let selectedCar = 0, playerCarImg = new Image(), trackImg = null;
 
-let keys =  {
-
-}
-, touch =  {
-
-}
-, lap = 0, totalLaps = 5, raceFinished = false, currentTrack = 0;
+let keys =  {}, touch =  {},
+lap = 0, totalLaps = 5, raceFinished = false, currentTrack = 0;
 
 let boostParticles = [];
 
@@ -157,7 +150,7 @@ let pitTimer = 0;
 
 const PIT_STOP_DURATION = 5.0;
 
-const MUST_PIT_THRESHOLD = 30;
+const MUST_PIT_THRESHOLD = 70;
 
 const PIT_LANE_SPEED_LIMIT = 20.0;
 
@@ -195,6 +188,69 @@ const tireMonitorCanvas = document.getElementById('tireMonitorCanvas');
 
 const tireMonitorCtx = tireMonitorCanvas ? tireMonitorCanvas.getContext('2d') : null;
 
+const DRIVER_DATA = {
+    "Kazami":    { name: "H. KAZAMI",      img: "driver/kazami.webp" },
+    "Kaga":      { name: "BLEED KAGA",   img: "driver/kaga.webp" },
+    "Shinjo":    { name: "N. SHINJO",      img: "driver/shinjo.webp" },
+    "Randoll":   { name: "K. L. V. RANDOLL", img: "driver/randoll.webp" },
+    "Gudelhian": { name: "K. GUDELHIAN",   img: "driver/gudelhian.webp" },
+    "Heinel":    { name: "FRANZ HEINEL",   img: "driver/heinel.webp" },
+    "Henri":     { name: "HENRI CLAYTOR",  img: "driver/henri.webp" },
+    "Bootsvorz": { name: "E. BOOTSVORZ",   img: "driver/bootsvorz.webp" },
+    "Asuka":     { name: "ASUKA SUGO",     img: "driver/asuka.webp" },
+    "Shiba":     { name: "SEIICHIRO SHIBA",img: "driver/shiba.webp" },
+    "Phil":      { name: "PHIL FRITZ",     img: "driver/phil.webp" },
+    "Leon":      { name: "LEON EARNHARDT", img: "driver/leon.webp" },
+    "Osamu":     { name: "OSAMU SUGO",     img: "driver/osamu.webp" },
+    "Otomo":     { name: "JOJI OTOMO",     img: "driver/otomo.webp" },
+    "Lopes":     { name: "PITALHA LOPES",    img: "driver/lopes.webp" },
+    "Toma":      { name: "MIKAMI TOMA",    img: "driver/toma.webp" },
+    "Nagumo":    { name: "NAGUMO",         img: "driver/Nagumo.webp" },
+    "Shoemach":  { name: "KNIGHT SHOEMACH",  img: "driver/Shoemach.webp" },
+    "Sera":      { name: "SERA GYARAGA",   img: "driver/Sera.webp" },
+    "Luisa":     { name: "M. A. LUSIA",    img: "driver/Luisa.webp" }
+};
+
+// 建立圖片快取物件 (解決 ReferenceError)
+const driverImgCache = {};
+
+// 初始化並預載所有駕駛員圖片
+Object.keys(DRIVER_DATA).forEach(key => {
+    const img = new Image();
+    img.src = DRIVER_DATA[key].img;
+    driverImgCache[key] = img;
+});
+
+const COMM_QUOTES = {
+    "boost": ["Raising boost pressure!", "Boost ON!", "Go!!", "Full Power!"],
+    "overtake": ["I'm going through!", "Out of my way!", "See you in the next corner.", "I can see the opening!"],
+    "pit": ["Entering pit lane.", "Strategy confirmed, pitting now.", "Tires are at their limit!"],
+    "random": ["I won't lose!", "Focus...", "Push it to the limit!", "Cyber System stabilized."]
+};
+
+// 廣播系統狀態
+let activeComm = {
+    isActive: false,
+    text: "",
+    driverKey: "",
+    timer: 0,
+    cooldown: 0
+};
+
+function requestComm(driverKey, type) {
+    // 如果現在有人在說話，或者冷卻中，就不插嘴 (除非是重要訊息)
+    if (activeComm.isActive || activeComm.cooldown > 0) return;
+
+    const quotes = COMM_QUOTES[type] || COMM_QUOTES["random"];
+    activeComm.text = quotes[Math.floor(Math.random() * quotes.length)];
+    activeComm.driverKey = driverKey || "default";
+    activeComm.isActive = true;
+    activeComm.timer = 150; // 顯示 2.5 秒
+    activeComm.cooldown = 300; // 5 秒後才能有下一個人說話
+}
+
+
+
 function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const cssW = window.innerWidth;
@@ -207,10 +263,6 @@ function resizeCanvas() {
     H = cssH;
     
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // Hide mobile controls on PC
-    const isMobile = window.matchMedia("(pointer: coarse)").matches;
-    document.getElementById('mobileControls').style.display = isMobile ? 'flex' : 'none';
 	
     // Resize Tire Monitor internal resolution
     const tireContainer = document.getElementById('tireMonitorContainer');
@@ -627,39 +679,6 @@ ctx.stroke();
 
 ctx.restore();
 
-}
-
-function drawModeHUD(ctx) {
-    if (gameState !== 'racing') return;
-
-    const x = W - 180;
-    const y = H - 280; // Above the dashboard
-    
-    ctx.save();
-    // Background plate
-    ctx.fillStyle = "rgba(0, 20, 40, 0.7)";
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 150, y);
-    ctx.lineTo(x + 130, y + 30);
-    ctx.lineTo(x - 20, y + 30);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = currentMode === 'AERO' ? "#00ffff" : "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Text
-    ctx.font = "bold 18px Rajdhani";
-    ctx.textAlign = "center";
-    ctx.fillStyle = currentMode === 'AERO' ? "#00ffff" : "#ffffff";
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = ctx.fillStyle;
-    
-    // Add a little icon or bracket
-    const label = currentMode === 'AERO' ? "« AERO MODE »" : "[ CIRCUIT ]";
-    ctx.fillText(label, x + 65, y + 22);
-    ctx.restore();
 }
 
 function drawCyberOverlay(ctx) {
@@ -2149,61 +2168,43 @@ function updateAeroMode(car, isPlayer) {
 }
 
 // 4. 動態切換車輛圖片
-function switchCarImage(car, isPlayerBoosting = false) {
-    if (!car.spec || !car.spec.image || car.spec.image === 'null') return;
+function switchCarImage(car, isCurrentlyBoosting = false) {
+    if (!car.spec || !car.spec.image) return;
 
     const spec = car.spec;
     const originalPath = spec.image;
     const basePath = originalPath.replace(/\.png$/i, '');
-    
-    // 檢查這是否為 Ogre 或其他同時擁有兩種變形圖的特殊車輛
-    // 判斷條件：路徑包含 "OGRE"
     const isSpecialCar = originalPath.toUpperCase().includes("OGRE");
 
     let targetSuffix = ".png";
 
-    // --- 核心邏輯切換 ---
-
-    if (isPlayerBoosting && spec.hasBoost) {
-        // 如果是 Ogre 或是沒有 Aero 的車，Boost 時使用 _Boost.png
-        // 如果是普通有 Aero 的車，Boost 時使用 _ABoost.png
-        if (isSpecialCar || !spec.hasAero) {
-            targetSuffix = "_Boost.png";
-        } else {
-            targetSuffix = "_ABoost.png";
-        }
+    // --- 優先權邏輯：Boost 優先於 Aero ---
+    if (isCurrentlyBoosting && spec.hasBoost) {
+        // 如果是 Ogre 或無 Aero 車用 _Boost，有 Aero 車用 _ABoost
+        targetSuffix = (isSpecialCar || !spec.hasAero) ? "_Boost.png" : "_ABoost.png";
     } 
     else if (car.isAeroMode && spec.hasAero) {
-        // 單純 Aero 變形（沒開 Boost）時，使用 _ABoost.png
         targetSuffix = "_ABoost.png";
     }
 
     const targetSrc = basePath + targetSuffix;
 
-    // --- 執行更換圖片 ---
-    if (!car.img) {
-        car.img = new Image();
-        car.img.src = targetSrc;
-    } else {
-        const currentSrcDecoded = decodeURIComponent(car.img.src);
-        if (!currentSrcDecoded.endsWith(targetSrc)) {
-            
-            // 為了防止 404，我們做一個簡單的載入測試
-            let tempImg = new Image();
-            tempImg.src = targetSrc;
-            
-            tempImg.onload = () => {
-                car.img.src = targetSrc;
-            };
-            
-            tempImg.onerror = () => {
-                // 如果 _Boost 或 _ABoost 載入失敗，退回原圖，避免黑畫面
-                if (targetSuffix !== ".png") {
-                    console.warn("Image not found, fallback to original:", targetSrc);
-                    car.img.src = originalPath;
-                }
-            };
-        }
+    // --- 防止閃爍：只有當路徑真的不同時才更換 ---
+    if (car.img) {
+        // 取得目前的檔名 (去掉網域路徑)
+        const currentSrc = car.img.src;
+        // 如果目前顯示的已經是目標圖片，直接返回
+        if (currentSrc.endsWith(targetSrc)) return;
+
+        // 如果不同，才進行更換
+        let tempImg = new Image();
+        tempImg.src = targetSrc;
+        tempImg.onload = () => {
+            car.img.src = targetSrc;
+        };
+        tempImg.onerror = () => {
+            if (targetSuffix !== ".png") car.img.src = originalPath;
+        };
     }
 }
 
@@ -2519,25 +2520,52 @@ function drawTireMonitor(car, ctx) {
     ctx.fillText(`TIRE: ${Math.round(avg)}%`, w / 2, h * 0.95);
 }
 
-function drawSingleAIAvatar(ctx) {
-  if (!currentAIAvatarImg || !currentAIAvatarImg.complete) return;
+//在賽車旁邊畫一個小小的頭像氣泡
+function drawCarMiniBubble(ctx, car) {
+    if (!car.bubbleActive || car.bubbleActive <= 0) return;
 
-  const size = Math.min(W * 0.08, 140);     // 畫面闊度 12%，上限 140
-  const x = 4 * W / 100;                    // 左邊留 3% 空位
-  const y = 9 * H / 100;                   // 貼近上方（大約 11% 高度）
+    const driverKey = car.spec.driver || "default";
+    const driver = DRIVER_DATA[driverKey] || DRIVER_DATA["default"];
+    
+    // 設定氣泡相對於車子的位置 (車子右上方)
+    const bx = car.x + 60; 
+    const by = car.y - 80;
+    const radius = 35; // 頭像大小
 
-  ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(x - 10, y - 10, size + 20, size + 50);
+    ctx.save();
+    // 1. 畫氣泡的對話尖角
+    ctx.beginPath();
+    ctx.moveTo(bx - 10, by + radius - 5);
+    ctx.lineTo(car.x + 20, car.y - 20); // 指向賽車
+    ctx.lineTo(bx + 10, by + radius - 5);
+    ctx.fillStyle = "#00ffff";
+    ctx.fill();
 
-  ctx.drawImage(currentAIAvatarImg, x, y, size, size);
+    // 2. 畫圓形外框 (發光效果)
+    ctx.beginPath();
+    ctx.arc(bx, by, radius + 3, 0, Math.PI * 2);
+    ctx.fillStyle = "#00ffff";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#00ffff";
+    ctx.fill();
 
-  ctx.font = `bold ${Math.max(14, size * 0.25)}px Rajdhani`;
-  ctx.fillStyle = '#00ffff';
-  ctx.textAlign = 'center';
-  ctx.fillText(currentAIName, x + size / 2, y + size + 28);
-
-  ctx.restore();
+    // 3. 裁切圓形並放入頭像
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(bx, by, radius, 0, Math.PI * 2);
+    ctx.clip();
+    
+    const img = new Image();
+    img.src = driver.img;
+    if (img.complete) {
+        ctx.drawImage(img, bx - radius, by - radius, radius * 2, radius * 2);
+    } else {
+        ctx.fillStyle = "#222";
+        ctx.fill();
+    }
+    ctx.restore();
+    
+    ctx.restore();
 }
 
 function loop()  {
@@ -2591,8 +2619,7 @@ const trackData = TRACKS[currentTrack];
 // 1. Draw the Full Screen Overlays first
 drawCyberOverlay(ctx);
 
-// 2. Draw Mode HUD (Aero/Circuit)
-drawModeHUD(ctx);
+
 
 // ==========================================
 // NEW PIT & GRANDSTAND DRAWING (Inside Camera)
@@ -2750,6 +2777,9 @@ allCars.forEach(car => {
         ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
     }
     ctx.restore();
+	
+	drawCarMiniBubble(ctx, car); 
+	
 });
 
 // 這裡加 player（如果 player 唔喺 allCars 入面）
@@ -2761,8 +2791,37 @@ if (player.img && player.img.complete) {
 }
 ctx.restore();
 
+drawCarMiniBubble(ctx, player);
+
+// --- 1. UI 顯示狀態全時監控 (放在 loop 裡面，ctx.restore() 之後) ---
+const rightUI = document.getElementById('rightUI');
+const mobileControls = document.getElementById('mobileControls');
+const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+
+// 只有在比賽 (racing) 或 倒數 (countdown) 狀態才顯示戰鬥 UI
+if (gameState === 'racing' || gameState === 'countdown') {
+    if (rightUI) rightUI.style.display = 'flex';
+    if (mobileControls && isTouchDevice) mobileControls.style.display = 'flex';
+} else {
+    // 其他所有狀態 (title, menu, track select, car select) 一律強制隱藏
+    if (rightUI) rightUI.style.display = 'none';
+    if (mobileControls) mobileControls.style.display = 'none';
+}
+
+// 只有不在標題時才畫 AI 頭像和通訊框
+if (gameState !== "title") {
+    drawSingleAIAvatar(ctx);
+    
+    if (activeComm.isActive) {
+        activeComm.timer--;
+        if (activeComm.timer <= 0) activeComm.isActive = false;
+    }
+    if (activeComm.cooldown > 0) activeComm.cooldown--;
+}
 ctx.restore();
 // === Camera transform 結束 ===
+
+
 
  // --- Lifting Turn 中央大字 ---
   if (liftingTurnBannerTimer > 0) {
@@ -2923,94 +2982,90 @@ allCars.forEach(car =>  {
   }
 
 updateTireWear(car, deltaTime);
+
+// --- [氣泡隨機倒數邏輯] ---
+  if (!car.bubbleActive) car.bubbleActive = 0;
+  if (!car.bubbleTimer) car.bubbleTimer = Math.random() * 500 + 200;
+
+  if (car.bubbleActive > 0) {
+      car.bubbleActive--; 
+  } else {
+      car.bubbleTimer--;
+      if (car.bubbleTimer <= 0) {
+          car.bubbleActive = 120; // 顯示約 2 秒
+          car.bubbleTimer = Math.random() * 600 + 500; // 下次出現間隔
+      }
+  }
  
 
-if (car.inPit)  {
-
-  if (car.pitTimer < PIT_STOP_DURATION)  {
-
-    car.pitTimer += deltaTime;
-
-    car.speed = 0;
-
-    car.forwardSpeed = 0;
-
-    car.sideSpeed = 0;
-
-  }
-else  {
-
-  car.tireHealth = [100, 100, 100, 100];
-
-  car.inPit = false;
-
-  car.pitCondition = 'exiting';
-
-  car.pitTimer = 0;
-
-  car.lapsSincePit = 0;
-
-  car.pitWaypointIndex = PIT_PARKING_INDEX + 1;
-
-}
-
-}
-else if (car.pitCondition === 'entering' || car.pitCondition === 'exiting')  {
-
-  const targetWaypoint_unscaled = trackData.pitWaypoints[car.pitWaypointIndex];
-
-  if (targetWaypoint_unscaled)  {
-
-    const targetX_scaled = targetWaypoint_unscaled.x * SCALE;
-
-    const targetY_scaled = targetWaypoint_unscaled.y * SCALE;
-
-    const distToTarget_scaled = Math.hypot(targetX_scaled - car.x, targetY_scaled - car.y);
-
-    const targetAngle = Math.atan2(targetY_scaled - car.y, targetX_scaled - car.x);
-
-    let angleDiff = targetAngle - car.angle;
-
-    angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
-
-    car.angle += angleDiff * 0.1;
-
-    car.forwardSpeed = Math.min(car.forwardSpeed || 0, 7.0);
-
-    if (car.forwardSpeed < 4.0) car.forwardSpeed = 4.0;
-
-    car.sideSpeed = 0;
-
-    car.x += Math.cos(car.angle) * car.forwardSpeed * MOVE_SCALE;
-
-    car.y += Math.sin(car.angle) * car.forwardSpeed * MOVE_SCALE;
-
-    car.speed = car.forwardSpeed;
-
-    if (car.pitWaypointIndex === PIT_PARKING_INDEX && distToTarget_scaled < 15 * SCALE)  {
-
-      car.pitCondition = 'pitting';
-
-      car.inPit = true;
-
+if (car.inPit) {
+    // 停車換胎中
+    if (car.pitTimer < PIT_STOP_DURATION) {
+        car.pitTimer += deltaTime;
+        car.speed = car.forwardSpeed = car.sideSpeed = 0;
+    } else {
+        car.tireHealth = [100, 100, 100, 100];
+        car.inPit = false;
+        car.pitCondition = 'exiting';
+        car.pitTimer = 0;
+        car.pitWaypointIndex = PIT_PARKING_INDEX + 1; // 往出口移動
     }
-  else if (distToTarget_scaled < PIT_LANE_DIST_SCALED)  {
+} 
+else if (car.pitCondition === 'entering' || car.pitCondition === 'exiting') {
+    const targetWaypoint = trackData.pitWaypoints[car.pitWaypointIndex];
 
-    car.pitWaypointIndex++;
+    if (targetWaypoint) {
+        const targetX = targetWaypoint.x * SCALE;
+        const targetY = targetWaypoint.y * SCALE;
+        const distToTarget = Math.hypot(targetX - car.x, targetY - car.y);
+        const targetAngle = Math.atan2(targetY - car.y, targetX - car.x);
 
-  }
+        // 1. 轉向優化：讓進入維修區的轉向更果斷
+        let angleDiff = targetAngle - car.angle;
+        angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+        car.angle += angleDiff * 0.15; // 稍微增加轉向靈敏度
 
-}
-else  {
+        // 2. 速度優化：
+        // 進入維修區時維持較高速度，直到快到停車位為止
+        let pitLaneSpeed = PIT_LANE_SPEED_LIMIT; // 使用全域限速 (約 20.0)
+        
+        // 如果快要到達停車點 (Parking Index)，才減速準備停車
+        if (car.pitCondition === 'entering' && car.pitWaypointIndex === PIT_PARKING_INDEX) {
+            pitLaneSpeed = 8.0; // 接近停車位時才減速
+        }
 
-  car.pitCondition = 'out';
+        // 加速邏輯：確保 AI 快速達到限速
+        if (car.forwardSpeed < pitLaneSpeed) {
+            car.forwardSpeed += 0.5; // 給予明確的加速度
+        } else {
+            car.forwardSpeed *= 0.96; // 如果超速則輕微減速
+        }
+        
+        // 保底速度，防止卡死
+        if (car.forwardSpeed < 5.0) car.forwardSpeed = 5.0;
 
-  car.forwardSpeed = 10.0;
+        car.sideSpeed = 0;
+        car.x += Math.cos(car.angle) * car.forwardSpeed * MOVE_SCALE;
+        car.y += Math.sin(car.angle) * car.forwardSpeed * MOVE_SCALE;
+        car.speed = car.forwardSpeed;
 
-  car.pitWaypointIndex = 0;
-
-}
-
+        // 抵達判斷
+        const arrivalDist = (car.pitWaypointIndex === PIT_PARKING_INDEX) ? 20 * SCALE : 60 * SCALE;
+        if (distToTarget < arrivalDist) {
+            if (car.pitCondition === 'entering' && car.pitWaypointIndex === PIT_PARKING_INDEX) {
+                car.pitCondition = 'pitting';
+                car.inPit = true;
+            } else {
+                car.pitWaypointIndex++;
+            }
+        }
+    } else {
+        // 出口路徑結束，回到賽道
+        car.pitCondition = 'out';
+        car.aiWantsToPit = false; // 重置請求標記
+        car.forwardSpeed = 15.0; // 回賽道時給予初始速度
+        car.pitWaypointIndex = 0;
+    }
 }
 else  {
 
@@ -3059,6 +3114,7 @@ if (car.aiWantsToPit && car.pitCondition === 'out') {
     // We force their lane offset so they are in position to hit the entry trigger
     car.laneOffset = -150; // Force them to the inside lane
 
+	
     if (trackData.pitEntry) {
         const d = Math.hypot((car.x/SCALE) - trackData.pitEntry.x, (car.y/SCALE) - trackData.pitEntry.y);
         
@@ -3070,7 +3126,7 @@ if (car.aiWantsToPit && car.pitCondition === 'out') {
         }
     }
 }
-	
+
 car.forwardSpeed *= FORWARD_DAMPING_AI;
 
 car.speed = Math.hypot(car.forwardSpeed || 0, car.sideSpeed || 0);
@@ -3148,42 +3204,35 @@ car.lastTireMarkPosR =  {
   x: currentX_R, y: currentY_R
 };
 
-// 冷卻時間
-if (car.aiBoostCooldown > 0) car.aiBoostCooldown--;
+// --- 1. AI Boost Logic & Straight Detection ---
+        if (car.aiBoostCooldown > 0) car.aiBoostCooldown--;
 
-// 正在 Boost
-if (car.isBoosting) {
-    car.aiBoostTimer--;
-    if (car.aiBoostTimer <= 0) {
-        car.isBoosting = false;
-        car.aiBoostCooldown = 240;      // 冷卻 4 秒
-        switchCarImage(car, false);     // ★ 收 Boost 圖（還原／保持 Aero）
-    }
-} else {
-    // 準備判斷直路先開 Boost
-    if (car.aiBoostCooldown <= 0) {
-        const carMaxSpeed   = getCarMaxSpeed(car);
-        const currentSpeed  = Math.abs(car.forwardSpeed || car.speed || 0);
-        const speedRatio    = currentSpeed / carMaxSpeed;
-        const turningAmount = Math.abs(car.lastAISteering || 0); // 愈細愈直
-
-        if (speedRatio > 0.7 && turningAmount < 0.06) {
-            let triggerChance = 0.01;
-            let boostDuration = 150; // ★ 調長啲（見下一節）
-
-            if (speedRatio > 0.85 && turningAmount < 0.02) {
-                triggerChance = 0.3;
-                boostDuration = 420; // 大直路用更長
+        if (car.isBoosting) {
+            car.aiBoostTimer--;
+            if (car.aiBoostTimer <= 0) {
+                car.isBoosting = false;
+                car.aiBoostCooldown = 480; // 增加冷卻到 8 秒，避免 AI 一直噴射
             }
+        } else {
+            if (car.aiBoostCooldown <= 0) {
+                const carMaxSpeed = getCarMaxSpeed(car);
+                const currentSpeed = Math.abs(car.forwardSpeed || 0);
+                const speedRatio = currentSpeed / carMaxSpeed;
+                
+                // 直道判定：AI 轉向輸入連續多幀都很小
+                // 稍微放寬判定到 0.05，並要求速度已經達到 80%
+                const isStraight = Math.abs(car.lastAISteering || 0) < 0.0001; 
 
-            if (Math.random() < triggerChance) {
-                car.isBoosting   = true;
-                car.aiBoostTimer = boostDuration;
-                switchCarImage(car, true);  // ★ AI 開 Boost 時只喺呢刻切一次圖
+                if (speedRatio > 0.76 && isStraight) {
+                    // 隨機一點點觸發機率，避免所有 AI 在同一秒開 Boost
+                    if (Math.random() < 0.3) {
+                        car.isBoosting = true;
+                        // 直道 Boost 維持 420 幀 (約 7 秒)
+                        car.aiBoostTimer = 420; 
+                    }
+                }
             }
         }
-    }
-}
 
 
 
@@ -3214,6 +3263,17 @@ else  {
 
   }
 }
+
+  if (!activeComm.isActive && activeComm.cooldown <= 0) {
+      const driverName = car.spec.driver || "default";
+      if (car.isBoosting && Math.random() < 0.005) { // 讓 AI 開 Boost 時有機會說話
+          requestComm(driverName, "boost");
+      }
+      else if (car.pitCondition === 'entering' && Math.random() < 0.05) {
+          requestComm(driverName, "pit");
+      }
+  }
+
 });
 
 // ★★★ 新增：AI 互相碰撞檢查（放喺 allCars.forEach 之後） ★★★
@@ -3483,7 +3543,7 @@ if (wantsToPit)  {
     pitHudPrompt.style.backgroundColor = "rgba(0, 120, 255, 0.8)";
 
     pitHudPrompt.style.borderColor = "#00ffff";
-
+	
   }
 
 }
@@ -3499,7 +3559,7 @@ else if (distToEntry < PIT_ENTRY_TRIGGER_DIST)  {
     pitHudPrompt.style.backgroundColor = "rgba(255, 165, 0, 0.8)";
 
     pitHudPrompt.style.borderColor = "#ffffff";
-
+	
   }
 }
 
@@ -3556,6 +3616,8 @@ if (boostingActive)  {
   acceleration *= 1.25;
 
   boostMeter = Math.max(0, boostMeter - BOOST_DRAIN_RATE);
+  
+  if (!activeComm.isActive && Math.random() < 0.01) requestComm(player.spec.driver, "boost");
 
   if (Math.random() < 0.7) emitBoostForCar(player, true);
 
@@ -3972,13 +4034,12 @@ if (!isBoosting)  {
 }
 
 const boostBar = document.getElementById('boostBar');
-
-if (boostBar)  {
-
+if (boostBar) {
   boostBar.style.transform = `scaleX(${boostMeter})`;
-
-  boostBar.style.background = 'linear-gradient(90deg, #ff3333, #ff6666)';
-
+  // 可以順便加入顏色切換
+  boostBar.style.background = isBoosting ? 
+    'linear-gradient(90deg, #ff00ff, #ff88ff)' : // Boost 時變紫色
+    'linear-gradient(90deg, #ff3333, #ff6666)'; // 平時紅色
 }
 
 if (boostCooldown > 0) boostCooldown--;
@@ -4025,7 +4086,6 @@ if (!playerAutoDriving && !inPit) {
 document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
 
 // ===== 世界層結束 =====
-
 }
  
 
@@ -4099,7 +4159,15 @@ if (playerAvgHealth <= CRITICAL_HEALTH && gameState === 'racing')  {
 
 if (gameState !== "title")  {
 
+
   drawSingleAIAvatar(ctx);
+  
+  // 處理廣播冷卻計時 (貼在這裡)
+  if (activeComm.isActive) {
+      activeComm.timer--;
+      if (activeComm.timer <= 0) activeComm.isActive = false;
+  }
+  if (activeComm.cooldown > 0) activeComm.cooldown--;  
 
 }
 
@@ -4114,8 +4182,43 @@ if (gameState === 'racing') {
         let aiPrefix = `▶ ${currentAIName || "SYSTEM"}: `; 
         let aiMsg = "";
 
- 
-// 原有的繪圖邏輯完全不變
+    // 1. 更新模式顯示 (Mode HUD)
+    const modeHUD = document.getElementById('modeHUD');
+    const modeTextEl = document.getElementById('modeText');
+    if (modeHUD && modeTextEl) {
+        if (currentMode === 'AERO') {
+            modeTextEl.textContent = "« AERO MODE »";
+            modeHUD.style.borderColor = "#00ffff"; // 變青藍色
+            modeTextEl.style.color = "#00ffff";
+        } else {
+            modeTextEl.textContent = "[ CIRCUIT ]";
+            modeHUD.style.borderColor = "#ffffff"; // 變白色
+            modeTextEl.style.color = "#ffffff";
+        }
+    }
+
+    // 2. 更新無線電 (Radio Comm)
+    const radioEl = document.getElementById('radioHUD');
+    if (radioEl) {
+        if (activeComm.isActive) {
+            radioEl.style.display = 'flex';
+            const driver = DRIVER_DATA[activeComm.driverKey] || DRIVER_DATA["default"];
+            
+            document.getElementById('radioDriverName').textContent = driver.name;
+            document.getElementById('radioDriverImg').src = driver.img;
+            document.getElementById('radioText').textContent = `"${activeComm.text}"`;
+
+            // Boost 時外框變紫色
+            if (isBoosting) {
+                radioEl.classList.add('boosting-ui');
+            } else {
+                radioEl.classList.remove('boosting-ui');
+            }
+        } else {
+            radioEl.style.display = 'none';
+        }
+    }
+
 // AI message + BOOST banner（會跟 W/H 縮放）
 if (aiMsg !== "" || isBoosting) {
   ctx.save();
@@ -4224,6 +4327,20 @@ if (gameState !== 'title')  {
 
     // Apply Off-track check
     checkOffTrack(player);
+	
+	// --- [玩家氣泡邏輯] ---
+	if (!player.bubbleActive) player.bubbleActive = 0;
+	if (!player.bubbleTimer) player.bubbleTimer = Math.random() * 500 + 300;
+
+	if (player.bubbleActive > 0) {
+		  player.bubbleActive--;
+	} else {
+	  player.bubbleTimer--;
+	  if (player.bubbleTimer <= 0) {
+		  player.bubbleActive = 120;
+		  player.bubbleTimer = Math.random() * 800 + 600;
+	  }
+	}
     
     // Apply Cyber System Logic
     updateCyberSystemLogic();
@@ -4248,12 +4365,26 @@ if (gameState !== 'title')  {
     }
   }
   
+// --- 2. AI Visual Mode & Image Update ---
   allCars.forEach(car => {
-    updateAeroMode(car, false);
-    switchCarImage(car, false);
-    if (car.isAeroMode) emitAeroAirflow(car);  // AI 獨立觸發！
+    // 只有在沒開 Boost 的時候才更新動態 Aero 判定，防止閃爍
+    if (!car.isBoosting) {
+        updateAeroMode(car, false); 
+    } else {
+        // Boost 期間強制開啟 Aero 模式 (如果有 Aero)
+        car.isAeroMode = car.spec.hasAero;
+    }
+    
+    // 更新圖片
+    switchCarImage(car, car.isBoosting); 
+    
+    if (car.isAeroMode) {
+        emitAeroAirflow(car);
+    }
+    
+    drawCarMiniBubble(ctx, car); 
   });
-  
+
   requestAnimationFrame(loop);
 
 }
@@ -4281,6 +4412,8 @@ document.getElementById('startTitleBtn').onclick = () =>  {
   document.getElementById('titleScreen').style.display = 'none';
 
   document.getElementById('mainMenu').classList.add('active');
+  
+  gameState = 'menu'; 
 
 };
 
@@ -4317,14 +4450,6 @@ document.getElementById('backToMenuBtn').onclick = () =>  {
   raceFinished = false;
 
 };
-
-const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-
-if (isTouch) {
-  // 只負責顯示 control panel
-  const mc = document.getElementById('mobileControls');
-  if (mc) mc.style.display = 'flex';
-}
 
 const pitBtn = document.getElementById('pitBtn');
 
