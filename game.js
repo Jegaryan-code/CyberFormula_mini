@@ -1,19 +1,12 @@
 document.addEventListener('DOMContentLoaded', () =>  {
 
-  const SCALE = 5.0;
-  
-  const CAMERA_ZOOM = 0.6;   // ★ 鏡頭縮放 (1 = 原來大小, 0.8 = 拉遠少少)
-
-  const WORLD_SPEED_SCALE = 0.8;
-
-  const SPEED_UNIT_SCALE = 36 / 17;
-
-  const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
-
-  const CARWIDTH = 120;
-
-  const CARHEIGHT = 150;
-  
+const SCALE = 5.0;
+const CAMERA_ZOOM = 0.6;   // ★ 鏡頭縮放 (1 = 原來大小, 0.8 = 拉遠少少)
+const WORLD_SPEED_SCALE = 0.8;
+const SPEED_UNIT_SCALE = 36 / 17;
+const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
+const CARWIDTH = 120;
+const CARHEIGHT = 150;
 const grandstandImg = new Image();
 grandstandImg.src = 'track/grandstand.png'; // Make sure the path is correct 
   
@@ -53,34 +46,22 @@ const AI_AVATAR_MAP = [
   {key: "ex-zard", img: "ai/AI_ZARD.png", name: "EX-ZARD"}];
 
 let currentAIAvatarImg = new Image();
-
 let currentAIName = "";
-
 const dashCanvas = document.getElementById('dashboardCanvas');
-
 const dashCtx = dashCanvas.getContext('2d');
-
 let player = null, allCars = [], gameState = 'title', mode = '', countdown = 0;
-
 let selectedCar = 0, playerCarImg = new Image(), trackImg = null;
-
 let keys =  {}, touch =  {},
 lap = 0, totalLaps = 5, raceFinished = false, currentTrack = 0;
 
 let boostParticles = [];
-
 let tireMarks = [];
-
 let dustParticles = [];
-
 let wantsToPit = false;
-
 let playerAutoDriving = false;
-
 let playerPitWaypointIndex = 0;
 
 const BASE_MAX_SPEED = 30;
-
 const MAX_SPEED_BONUS = 4;
 
 // 在檔案頂部，變數宣告區
@@ -133,59 +114,37 @@ const COMET_TURN_BANNER_DURATION = 90;
 const COMET_EVO_BANNER_DURATION  = 90;
 
 let boostMeter = 1.0;
-
 const BOOST_DRAIN_RATE = 0.0015;
-
 const BOOST_RECHARGE_RATE = 0.0015;
-
 const BOOST_SPEED_MULTIPLIER = 1.4;
-
 let boostCooldown = 0;
 
 let tireHealth = [100, 100, 100, 100];
-
 let inPit = false;
-
 let pitTimer = 0;
-
 const PIT_STOP_DURATION = 5.0;
-
 const MUST_PIT_THRESHOLD = 70;
-
 const PIT_LANE_SPEED_LIMIT = 20.0;
-
 const PIT_PARKING_DIST_SCALED = 15;
-
 const CRITICAL_HEALTH = 5;
-
 const NORMAL_WEAR_RATE = 0.05;
-
 const DRIFT_WEAR_MULTIPLIER = 1.0;
-
 const PIT_ENTRY_WAYPOINT_INDEX = -2;
-
 const PIT_STOP_WAYPOINT_INDEX = -1;
 
 let sandPattern = null;
 
 const miniCanvas = document.getElementById('minimapCanvas');
-
 const miniCtx = miniCanvas.getContext('2d');
-
 const MW = miniCanvas.width, MH = miniCanvas.height;
-
 let mapScale = 0.5;
-
 let mapOffsetX = 0, mapOffsetY = 0;
 
 let lastCountdownTime = 0;
-
 let countdownInterval = null;
-
 let countdownStartTime = 0;
 
 const tireMonitorCanvas = document.getElementById('tireMonitorCanvas');
-
 const tireMonitorCtx = tireMonitorCanvas ? tireMonitorCanvas.getContext('2d') : null;
 
 const DRIVER_DATA = {
@@ -249,8 +208,6 @@ function requestComm(driverKey, type) {
     activeComm.cooldown = 300; // 5 秒後才能有下一個人說話
 }
 
-
-
 function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const cssW = window.innerWidth;
@@ -278,82 +235,100 @@ window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', resizeCanvas);
 resizeCanvas();  // 一入頁就 fit browser
 
-
 // 全域狀態
 let aeroModeActive = false;
 let circuitModeActive = false;
 let currentMode = 'Circuit'; // 初始為 Circuit Mode
 
 function getCarMaxSpeed(car)  {
-
   if (!car.spec) return BASE_MAX_SPEED;
-
   const minAccel = 4.5;
-
   const maxAccel = 5.3;
-
   const normalizedAccel = (car.spec.acceleration - minAccel) / (maxAccel - minAccel);
-
   const speedBonus = normalizedAccel * MAX_SPEED_BONUS;
-
   return BASE_MAX_SPEED + speedBonus;
-
 }
 
 // 2. Off-Track Detection Logic
 function checkOffTrack(car) {
     const t = TRACKS[currentTrack];
     let minSquareDist = Infinity;
+    let closestIndex = 0;
 
-    // 1. Check Main Race Track
+    // 1. 計算距離
     for (let i = 0; i < t.waypoints.length; i++) {
         const p1 = t.waypoints[i];
         const p2 = t.waypoints[(i + 1) % t.waypoints.length];
-        const dist = distToSegment(
-            car.x, car.y, 
-            p1.x * SCALE, p1.y * SCALE, 
-            p2.x * SCALE, p2.y * SCALE
-        );
-        if (dist < minSquareDist) minSquareDist = dist;
-    }
-
-    // 2. Check Pit Road (Exclude from penalty)
-    if (t.pitWaypoints) {
-        for (let i = 0; i < t.pitWaypoints.length - 1; i++) {
-            const p1 = t.pitWaypoints[i];
-            const p2 = t.pitWaypoints[i + 1];
-            const dist = distToSegment(
-                car.x, car.y, 
-                p1.x * SCALE, p1.y * SCALE, 
-                p2.x * SCALE, p2.y * SCALE
-            );
-            if (dist < minSquareDist) minSquareDist = dist;
+        const d = distToSegment(car.x, car.y, p1.x * SCALE, p1.y * SCALE, p2.x * SCALE, p2.y * SCALE);
+        if (d < minSquareDist) {
+            minSquareDist = d;
+            closestIndex = i;
         }
     }
 
-    const roadWidthThreshold = (95 * SCALE);
-    const isOff = Math.sqrt(minSquareDist) > roadWidthThreshold;
-    
-    if (isOff) {
-        // Subtle penalty so car can still move back to track
-        offTrackFactor = 0.98; 
-        
-        // Triple Dust effect when off-track
-        if (Math.abs(car.speed) > 2) {
-            for(let i=0; i<3; i++) {
-                dustParticles.push({
-                    x: car.x + (Math.random()-0.5)*30,
-                    y: car.y + (Math.random()-0.5)*30,
-                    vx: -Math.cos(car.angle) * 1.5,
-                    vy: -Math.sin(car.angle) * 1.5,
-                    life: 30,
-                    maxLife: 30
-                });
+    const dist = Math.sqrt(minSquareDist);
+    const roadWidthThreshold = (95 * SCALE); 
+    const resetThreshold = (600 * SCALE); // 稍微放大重置範圍，減少誤觸
+
+    // --- 修正後的邏輯 ---
+    if (dist > resetThreshold) {
+        // 如果還沒在重置狀態中，才執行重置
+        if (!car.isResetting) {
+            car.isResetting = true; 
+            if (!car.isAI) {
+                resetPlayerToTrack(car, closestIndex);
+            } else {
+                resetCarToWaypoint(car, closestIndex);
             }
+            
+            // 2 秒後才允許下一次重置偵測，給文字消失的時間
+            setTimeout(() => { car.isResetting = false; }, 2000);
         }
+    } else if (dist > roadWidthThreshold) {
+        offTrackFactor = 0.98; 
+        if (Math.abs(car.speed) > 2) emitOffTrackDust(car);
     } else {
         offTrackFactor = 1.0;
     }
+}
+
+/**
+ * 將玩家重置回賽道
+ */
+function resetPlayerToTrack(car, wpIndex) {
+    const t = TRACKS[currentTrack];
+    const targetWp = t.waypoints[wpIndex];
+
+    // 1. 觸發文字提示
+    modeNotifyText = "OUT OF BOUNDS: RECOVERING...";
+    modeNotifyTimer = 120; // 2秒後會自動消失
+    
+    // 2. 廣播對話
+    requestComm(car.spec.driver || "default", "random");
+
+    // 3. 瞬間移動回賽道中心
+    car.x = targetWp.x * SCALE;
+    car.y = targetWp.y * SCALE;
+    car.forwardSpeed = 8; // 給予一點基本速度，避免原地卡死
+    car.sideSpeed = 0;
+
+    // 4. 修正車頭朝向 (指向下一個路點)
+    const nextWp = t.waypoints[(wpIndex + 1) % t.waypoints.length];
+    car.angle = Math.atan2(nextWp.y - targetWp.y, nextWp.x - targetWp.x);
+
+    // 5. 視覺效果：讓車子閃爍
+    car.isInvincible = 60; // 閃爍 1 秒
+}
+
+/**
+ * 簡單重置 (適用於 AI)
+ */
+function resetCarToWaypoint(car, wpIndex) {
+    const t = TRACKS[currentTrack];
+    car.x = t.waypoints[wpIndex].x * SCALE;
+    car.y = t.waypoints[wpIndex].y * SCALE;
+    car.forwardSpeed = 10;
+    car.sideSpeed = 0;
 }
 
 function distToSegment(px, py, x1, y1, x2, y2) {
@@ -557,69 +532,47 @@ canvas.addEventListener('mousedown', (e) => {
 function createSandPattern()  {
 
   const pCanvas = document.createElement('canvas');
-
   pCanvas.width = 64;
-
   pCanvas.height = 64;
-
   const pCtx = pCanvas.getContext('2d');
-
   pCtx.fillStyle = '#C2B280';
-
   pCtx.fillRect(0, 0, 64, 64);
-
   pCtx.fillStyle = '#B0A070';
-
   for(let i=0;
   i<40;
   i++)  {
-
     pCtx.fillRect(Math.random()*64, Math.random()*64, 2, 2);
-
   }
 
 pCtx.fillStyle = '#D6C690';
 
 for(let i=0;
-i<40;
-i++)  {
-
-  pCtx.fillRect(Math.random()*64, Math.random()*64, 2, 2);
-
-}
+	i<40;
+	i++)  {
+	  pCtx.fillRect(Math.random()*64, Math.random()*64, 2, 2);
+	}
 
 return ctx.createPattern(pCanvas, 'repeat');
 
 }
 
 function drawSandBackground(ctx)  {
-
   const patternSize = 100;
-
   ctx.save();
-
   ctx.fillStyle = '#C2B280';
-
   ctx.fillRect(0, 0, W, H);
-
   ctx.fillStyle = 'rgba(160, 140, 80, 0.3)';
 
   for (let i=0;
   i<W;
   i+=50)  {
-
     for (let j=0;
     j<H;
     j+=50)  {
-
       if ((i+j)%100 === 0) ctx.fillRect(i, j, 50, 50);
-
     }
-
 }
-
 ctx.restore();
-
 }
 
 function drawCurrentTrackRoad(ctx) {
@@ -638,45 +591,37 @@ function drawCurrentTrackRoad(ctx) {
     }
 
 ctx.closePath();
-
 ctx.lineWidth = 720;
-
 ctx.strokeStyle = '#000000';
-
 ctx.stroke();
-
 ctx.lineWidth = 700;
-
 ctx.strokeStyle = '#d32f2f';
-
 ctx.stroke();
-
 ctx.lineWidth = 700;
-
 ctx.strokeStyle = '#ffffff';
-
 ctx.setLineDash([50, 50]);
-
 ctx.lineDashOffset = -Date.now() / 20;
-
 ctx.stroke();
-
 ctx.setLineDash([]);
-
 ctx.lineWidth = 550;
-
 ctx.strokeStyle = '#555555';
-
 ctx.stroke();
-
 ctx.lineWidth = 6;
-
 ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-
 ctx.setLineDash([80, 100]);
-
 ctx.stroke();
+ctx.restore();
 
+ctx.save();
+ctx.lineWidth = 1000 * SCALE; // 非常寬
+ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)'; // 淡淡的黑色影子
+ctx.beginPath();
+ctx.moveTo(wps[0].x * SCALE, wps[0].y * SCALE);
+for (let i = 1; i < wps.length; i++) {
+    ctx.lineTo(wps[i].x * SCALE, wps[i].y * SCALE);
+}
+ctx.closePath();
+ctx.stroke();
 ctx.restore();
 
 }
@@ -989,332 +934,179 @@ function tryActivateCometEvolution(player, steer, maxSpeedNow) {
 }
 
 function drawDashboard(speed)  {
-
   const w = dashCanvas.width;
-
   const h = dashCanvas.height;
-
   const cx = w / 2;
-
   const cy = h - 20;
-
   const radius = 160;
-
   dashCtx.clearRect(0, 0, w, h);
-
   const startAngle = Math.PI;
-
   const endAngle = Math.PI * 2;
-
   const maxSpeed = 30;
-
   const speedPct = Math.min(Math.abs(speed), maxSpeed) / maxSpeed;
-
   const currentAngle = startAngle + (endAngle - startAngle) * speedPct;
-
   dashCtx.beginPath();
-
   dashCtx.arc(cx, cy, radius, startAngle, endAngle);
-
   dashCtx.lineWidth = 40;
-
   dashCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-
   dashCtx.stroke();
-
   const grad = dashCtx.createLinearGradient(0, 0, w, 0);
-
   grad.addColorStop(0.2, '#00ff00');
-
   grad.addColorStop(0.6, '#ffff00');
-
   grad.addColorStop(1.0, '#ff0000');
-
   dashCtx.beginPath();
-
   dashCtx.arc(cx, cy, radius, startAngle, endAngle);
-
   dashCtx.lineWidth = 20;
-
   dashCtx.lineCap = 'butt';
-
   dashCtx.strokeStyle = 'rgba(255,255,255,0.1)';
-
   dashCtx.stroke();
-
   dashCtx.beginPath();
-
   dashCtx.arc(cx, cy, radius, startAngle, currentAngle);
-
   dashCtx.lineWidth = 20;
-
   dashCtx.strokeStyle = grad;
-
   dashCtx.stroke();
-
   dashCtx.save();
-
   dashCtx.translate(cx, cy);
-
   dashCtx.rotate(currentAngle);
-
   dashCtx.beginPath();
-
   dashCtx.moveTo(0, 0);
-
   dashCtx.lineTo(radius + 10, 0);
-
   dashCtx.lineWidth = 4;
-
   dashCtx.strokeStyle = '#fff';
-
   dashCtx.shadowBlur = 10;
-
   dashCtx.shadowColor = '#fff';
-
   dashCtx.stroke();
-
   dashCtx.restore();
-
   dashCtx.font = 'italic bold 60px Orbitron';
-
   dashCtx.fillStyle = '#fff';
-
   dashCtx.textAlign = 'center';
-
   dashCtx.shadowBlur = 15;
-
   dashCtx.shadowColor = '#00ffff';
-
   const kmh = Math.round(Math.abs(speed) * 15);
-
   dashCtx.fillText(kmh, cx, cy - 50);
-
   dashCtx.font = '20px Rajdhani';
-
   dashCtx.fillStyle = '#aaa';
-
   dashCtx.shadowBlur = 0;
-
   dashCtx.fillText("KM/H", cx, cy - 25);
-
 }
 
 function drawStartLights(ctx, W, H, countdownStartTime)  {
-
   if (gameState !== 'countdown' || !countdownStartTime) return;
-
   const timeElapsed = (Date.now() - countdownStartTime);
-
   const lightNumber = Math.floor(timeElapsed / 1000);
-
   ctx.save();
-
   const lights = 5;
-
   const lightRadius = 30;
-
   const lightGap = 20;
-
   const totalWidth = lights * 2 * lightRadius + (lights - 1) * lightGap;
-
   let startX = (W / 2) - (totalWidth / 2) + lightRadius;
-
   let startY = 150;
-
   for (let i = 0;
   i < lights;
   i++)  {
-
     ctx.beginPath();
-
     const x = startX + i * (2 * lightRadius + lightGap);
-
     ctx.arc(x, startY, lightRadius, 0, Math.PI * 2);
-
     if (lightNumber > i && lightNumber <= lights)  {
-
       ctx.fillStyle = 'rgba(255, 0, 0, 1.0)';
-
       ctx.shadowBlur = 15;
-
       ctx.shadowColor = '#f00';
-
     }
   else  {
-
     ctx.fillStyle = 'rgba(30, 30, 30, 0.6)';
-
     ctx.shadowBlur = 0;
-
     ctx.shadowColor = 'transparent';
-
   }
-
 ctx.fill();
-
 }
 
 if (lightNumber >= lights)  {
-
   ctx.font = 'bold 150px Rajdhani, sans-serif';
-
   ctx.textAlign = 'center';
-
   ctx.fillStyle = '#0f0';
-
   ctx.shadowBlur = 20;
-
   ctx.shadowColor = '#0f0';
-
   ctx.fillText('GO!', W / 2, H / 2);
-
 }
-
 ctx.restore();
-
 }
 
 function updateAIAvatarByCarName(carName)  {
-
   if (!carName) return;
-
   const nameLower = carName.toLowerCase();
-
   for (const ai of AI_AVATAR_MAP)  {
-
     if (nameLower.includes(ai.key))  {
-
       if (currentAIAvatarImg.src !== ai.img)  {
-
         currentAIAvatarImg = new Image();
-
         currentAIAvatarImg.src = ai.img;
-
         currentAIName = ai.name;
-
       }
-
     return;
-
   }
-
 }
-
 currentAIName = "AI";
-
 }
 
 function drawMinimap()  {
-
   miniCtx.clearRect(0, 0, MW, MH);
-
   const t = TRACKS[currentTrack];
-
   miniCtx.save();
-
   miniCtx.lineWidth = 4;
-
   miniCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-
   miniCtx.lineJoin = 'round';
-
   miniCtx.lineCap = 'round';
-
   const wps = t.waypoints;
-
   if (wps.length > 0)  {
-
     miniCtx.beginPath();
-
     miniCtx.moveTo(
     wps[0].x * SCALE * mapScale + mapOffsetX,
     wps[0].y * SCALE * mapScale + mapOffsetY
     );
-
     for (let i = 1;
     i < wps.length;
     i++)  {
-
       miniCtx.lineTo(
       wps[i].x * SCALE * mapScale + mapOffsetX,
       wps[i].y * SCALE * mapScale + mapOffsetY
       );
-
     }
-
   miniCtx.closePath();
-
   miniCtx.stroke();
-
 }
-
 miniCtx.restore();
-
 const carsToDraw = [...allCars, player];
-
 const pointSize = 5;
-
 carsToDraw.forEach(car =>  {
-
   const miniX = car.x * mapScale + mapOffsetX;
-
   const miniY = car.y * mapScale + mapOffsetY;
-
   miniCtx.fillStyle = (car === player) ? 'red' : 'yellow';
-
   miniCtx.beginPath();
-
   miniCtx.arc(miniX, miniY, pointSize, 0, Math.PI * 2);
-
   miniCtx.fill();
-
   if (car === player)  {
-
     miniCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-
     miniCtx.lineWidth = 1.5;
-
     miniCtx.stroke();
-
   }
-
 });
-
 }
  
 function checkCollisions(car1, car2)  {
-
   const dx = car2.x - car1.x;
-
   const dy = car2.y - car1.y;
-
   const dist = Math.hypot(dx, dy);
-
   const minDist = (CARWIDTH + CARHEIGHT) / 3;
-
   if (dist < minDist)  {
-
     const push = (minDist - dist) * 0.4;
-
     const nx = dx / (dist || 1);
-
     const ny = dy / (dist || 1);
-
     car1.x -= nx * push;
-
     car1.y -= ny * push;
-
     car2.x += nx * push;
-
     car2.y += ny * push;
-
     car1.forwardSpeed *= 0.9;
-
     car2.forwardSpeed *= 0.9;
-
   }
-
 }
 
 function followWaypoints(car) {
@@ -1415,84 +1207,48 @@ function followWaypoints(car) {
 }
 
 function loadTrack(i)  {
-
   currentTrack = i;
-
   trackImg = new Image();
-
   trackImg.onload = () =>  {
-
     document.getElementById('hud').textContent = `TRACK: ${TRACKS[i].name}`;
-
   };
-
 trackImg.src = TRACKS[i].bgImage;
-
 const t = TRACKS[i];
-
 const waypointsX = t.waypoints.map(w => w.x);
-
 const waypointsY = t.waypoints.map(w => w.y);
-
 const minX = Math.min(...waypointsX) * SCALE;
-
 const maxX = Math.max(...waypointsX) * SCALE;
-
 const minY = Math.min(...waypointsY) * SCALE;
-
 const maxY = Math.max(...waypointsY) * SCALE;
-
 const trackWidth = maxX - minX;
-
 const trackHeight = maxY - minY;
 
 mapScale = Math.min(
 (MW - 10) / trackWidth,
 (MH - 10) / trackHeight
 );
-
 mapOffsetX = (MW / 2) - ((minX + maxX) / 2) * mapScale;
-
 mapOffsetY = (MH / 2) - ((minY + maxY) / 2) * mapScale;
-
 }
 
 function openTrackSelect(m)  {
-
   mode = m;
-
   document.getElementById('mainMenu').classList.remove('active');
-
   document.getElementById('trackSelect').classList.add('active');
-
   const grid = document.getElementById('trackGrid');
-
   grid.innerHTML = '';
-
   TRACKS.forEach((t, i) =>  {
-
     const d = document.createElement('div');
-
     d.className = `track-card ${i === currentTrack ? 'selected' : ''}`;
-
     d.innerHTML = `<img src="${t.bgImage}"><br>${t.name}`;
-
     d.onclick = () =>  {
-
       currentTrack = i;
-
       grid.querySelectorAll('.track-card').forEach(c => c.classList.remove('selected'));
-
       d.classList.add('selected');
-
       loadTrack(i);
-
     };
-
   grid.appendChild(d);
-
 });
-
 }
 
 function toPrettyDriverName(key) {
@@ -1775,45 +1531,27 @@ function buildCarList()  {
 }
 
 function startRace()  {
-	
   playerCarImg.onload = null;	
-
   if (countdownInterval)  {
-
     clearInterval(countdownInterval);
-
     countdownInterval = null;
-
   }
 
 allCars = [];
-
 const t = TRACKS[currentTrack];
-
 const GRID_SPACING = 200;
-
 const ROW_SPACING = 120;
-
 if (mode === 'championship')  {
-
   const a = CARSPECS.map((_, i) => i).filter(i => i !== selectedCar);
-
   const chosen = [];
-
   while (chosen.length < 10 && a.length > 0)  {
-
     chosen.push(a.splice(Math.floor(Math.random() * a.length), 1)[0]);
-
   }
 
 chosen.forEach((idx, i) =>  {
-
   const img = new Image();
-
   img.src = CARSPECS[idx].image;
-
   const p = t.gridPositions[i];
-
   allCars.push({
     isAI: true,
     x: (p.x * SCALE),
@@ -1845,9 +1583,7 @@ chosen.forEach((idx, i) =>  {
 const playerGridPos = (t.gridPositions && t.gridPositions.length)
 ? t.gridPositions[t.gridPositions.length - 1]
 : t.playerStart;
-
 player =  {
-
   x: playerGridPos.x * SCALE,
   y: playerGridPos.y * SCALE,
   angle: (t.playerStart && t.playerStart.angle != null) ? t.playerStart.angle : -Math.PI / 2,
@@ -1865,51 +1601,31 @@ player =  {
 };
 
 gameState = 'countdown';
-
 countdownStartTime = Date.now();
-
 lap = 0;
-
 totalLaps = 5;
-
 raceFinished = false;
-
 player.prevY = player.y;
-
 if (!playerAutoDriving && !inPit) {
 document.getElementById('lapHud').textContent = `LAP 0/${totalLaps}`;
 }
 const countdownElement = document.getElementById('countdown');
-
 if (countdownElement)  {
-
   countdownElement.style.display = 'none';
-
 }
-
 const COUNTDOWN_DURATION_MS = 6000;
-
 if (countdownInterval) {
-	
 	clearTimeout(countdownInterval);
-
 }
 
 countdownInterval = setTimeout(() =>  {
-
   gameState = 'racing';
-
   countdownInterval = null;
-
 }
 , COUNTDOWN_DURATION_MS);
-
 if (typeof loop === 'function')  {
-
   requestAnimationFrame(loop);
-
 }
-
 }
 
 function logAICarSpecs() {
@@ -1997,19 +1713,13 @@ function updateCarImages() {
 }
 
 function emitMoveDustForCar(car)  {
-
   const REAR_OFFSET = CARHEIGHT / 2;
-
   const rearX = car.x + Math.cos(car.angle + Math.PI) * REAR_OFFSET;
-
   const rearY = car.y + Math.sin(car.angle + Math.PI) * REAR_OFFSET;
-
   for (let i = 0;
   i < 2;
   i++)  {
-
     dustParticles.push( {
-
       x: rearX + (Math.random() - 0.5) * 18,
       y: rearY + (Math.random() - 0.5) * 18,
       vx: -Math.cos(car.angle) * (0.6 + Math.random() * 0.8),
@@ -2018,97 +1728,54 @@ function emitMoveDustForCar(car)  {
       maxLife: 22
     }
   );
-
 }
-
 }
 
 function drawTrackFromWaypoints(ctx, track, scale = 1, offsetX = 0, offsetY = 0)  {
-
   const wps = track.waypoints;
-
   if (!wps || !wps.length) return;
-
   ctx.save();
-
   ctx.beginPath();
-
   ctx.moveTo(wps[0].x * scale + offsetX, wps[0].y * scale + offsetY);
-
   for (let i = 1;
   i < wps.length;
   i++)  {
-
     ctx.lineTo(wps[i].x * scale + offsetX, wps[i].y * scale + offsetY);
-
   }
-
 ctx.lineTo(wps[0].x * scale + offsetX, wps[0].y * scale + offsetY);
-
 const roadWidth = 250;
-
 const edgeWidth = 10;
-
 ctx.lineJoin = 'round';
-
 ctx.lineCap = 'round';
-
 ctx.strokeStyle = '#FFF';
-
 ctx.lineWidth = roadWidth;
-
 ctx.stroke();
-
 ctx.strokeStyle = '#bbbbbb';
-
 ctx.lineWidth = roadWidth - edgeWidth * 2;
-
 ctx.stroke();
-
 ctx.restore();
-
 }
 
 function drawStartGrid(ctx, track, scale)  {
-
   const grid = track.gridPositions;
-
   if (!grid || !grid.length) return;
-
   ctx.save();
-
   ctx.strokeStyle = '#fff';
-
   ctx.lineWidth = 3;
-
   ctx.setLineDash([10, 5]);
-
   grid.forEach((pos, i) =>  {
-
     const x = (pos.x * scale);
-
     const y = (pos.y * scale);
-
     ctx.beginPath();
-
     ctx.moveTo(x - 50, y);
-
     ctx.lineTo(x + 50, y);
-
     ctx.stroke();
-
     ctx.fillStyle = '#fff';
-
     ctx.font = '20px Arial';
-
     ctx.textAlign = 'center';
-
     ctx.fillText(i + 1, x, y - 10);
-
   });
-
 ctx.restore();
-
 }
 
 // 只檢查 _ABoost.png（Aero Mode）
@@ -2209,38 +1876,24 @@ function switchCarImage(car, isCurrentlyBoosting = false) {
 }
 
 function emitBoostForCar(car, isPlayer)  {
-
   if (isPlayer) {
     // Boost 時也用 switchCarImage 邏輯，保持一致
     switchCarImage(car, true);
   } 
-  
   const jets = [-1, 1];
-
   for (let j = 0;
   j < jets.length;
   j++)  {
-
     const side = jets[j];
-
     const baseAngle = car.angle + Math.PI;
-
     const angle = baseAngle + (Math.random() - 0.5) * 0.18;
-
     const speed = 5.5 + Math.random() * 4.5;
-
     const life = 4 + Math.random() * 6;
-
     const backOffset = 58 + Math.random() * 10;
-
     const sideOffset = side * (CARWIDTH * 0.22);
-
     const length = 2 + Math.random() * 9;
-
     const width = 8 + Math.random() * 3;
-
     boostParticles.push( {
-
       type: 'flame',
       x: car.x - Math.cos(car.angle) * backOffset + Math.cos(car.angle + Math.PI / 2) * sideOffset,
       y: car.y - Math.sin(car.angle) * backOffset + Math.sin(car.angle + Math.PI / 2) * sideOffset,
@@ -2254,46 +1907,28 @@ function emitBoostForCar(car, isPlayer)  {
       gravity: 0,
       color: 'rgba(0, 180, 255, 0.85)'
     });
-
 }
-
 }
 
 function emitDustForCar(car, isPlayer, carMaxSpeed)  {
-
   const TIRE_MARK_THRESHOLD = 1.0;
-
   let DRIFT_SPEED_THRESHOLD;
-
   if (isPlayer)  {
-
     DRIFT_SPEED_THRESHOLD = carMaxSpeed * 0.6;
-
   }
 else  {
-
   DRIFT_SPEED_THRESHOLD = carMaxSpeed * 0.4;
-
 }
-
 const isDrifting = car.speed > DRIFT_SPEED_THRESHOLD && Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD;
-
 if (!isDrifting) return;
-
 const REAR_OFFSET = CARHEIGHT / 2;
-
 const rearX = car.x + Math.cos(car.angle + Math.PI) * REAR_OFFSET;
-
 const rearY = car.y + Math.sin(car.angle + Math.PI) * REAR_OFFSET;
-
 const sideDirection = car.sideSpeed > 0 ? 1 : -1;
-
 for (let i = 0;
 i < 4;
 i++)  {
-
   dustParticles.push( {
-
     x: rearX + (Math.random() - 0.5) * 20,
     y: rearY + (Math.random() - 0.5) * 20,
     vx: -Math.cos(car.angle) * 1 + Math.cos(car.angle + Math.PI / 2) * sideDirection * (1 + Math.random() * 2),
@@ -2301,9 +1936,7 @@ i++)  {
     life: 40, 
     maxLife: 60
   });
-
 }
-
 }
 
 function emitMirageAfterimage(car) {
@@ -2417,41 +2050,24 @@ function emitLiftingTurnWind(car) {
 }
 
 function updateTireWear(car, deltaTime)  {
-
   if (!car.tireHealth || car.inPit) return;
-
   const TIRE_MARK_THRESHOLD = 0.18;
- 
   const MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 26.0;
- 
   const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.18;
- 
-
   const forwardSpeed = Math.abs(car.forwardSpeed || 0);
-
   const driftAngle = Math.abs(car.driftAngle || 0);
-
   const turnRate = car.lastTurnRate;
-
   const isDrifting = (forwardSpeed > DRIFT_SPEED_THRESHOLD) && 
   (Math.abs(turnRate) > 0.012 || Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD || driftAngle > 0.12);
-
   let totalWear = NORMAL_WEAR_RATE * deltaTime;
-
   if (isDrifting)  {
-
     totalWear += NORMAL_WEAR_RATE * DRIFT_WEAR_MULTIPLIER * deltaTime;
-
   }
-
 for (let i = 0;
 i < car.tireHealth.length;
 i++)  {
-
   car.tireHealth[i] = Math.max(0, car.tireHealth[i] - totalWear);
-
 }
-
 }
  
 function drawTireMonitor(car, ctx) {
@@ -2569,11 +2185,9 @@ function drawCarMiniBubble(ctx, car) {
 }
 
 function loop()  {
-
   if (gameState === 'paused' || raceFinished)  {
     return;
   }
-
   // 背景
   if (sandPattern)  {
     ctx.fillStyle = sandPattern;
@@ -2612,15 +2226,9 @@ ctx.drawImage(
 // 這兩個 helper 要改簽名，只用世界座標（下面第 4 點有解）
 drawCurrentTrackRoad(ctx);
 drawStartGrid(ctx, TRACKS[currentTrack], SCALE);
-
 const trackData = TRACKS[currentTrack];
-
-
 // 1. Draw the Full Screen Overlays first
 drawCyberOverlay(ctx);
-
-
-
 // ==========================================
 // NEW PIT & GRANDSTAND DRAWING (Inside Camera)
 // ==========================================
@@ -2737,11 +2345,7 @@ boostParticles.forEach(p => {
 });
 ctx.restore();
 
-
-
-
 ctx.save();
-
 tireMarks.forEach(mark => {
     const alpha = Math.min(1, mark.life / 60);
     const size = 10;
@@ -2756,7 +2360,6 @@ tireMarks.forEach(mark => {
 ctx.restore();
 
 ctx.save();
-
 dustParticles.forEach(p => {
     const alpha = p.life / p.maxLife;
     const size = alpha * 10;
@@ -2766,7 +2369,6 @@ dustParticles.forEach(p => {
     ctx.arc(p.x, p.y, size * 0.2, 0, Math.PI * 2);  // 世界座標
     ctx.fill();
 });
-
 ctx.restore();
 
 allCars.forEach(car => {
@@ -2777,15 +2379,22 @@ allCars.forEach(car => {
         ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
     }
     ctx.restore();
-	
 	drawCarMiniBubble(ctx, car); 
-	
 });
 
 // 這裡加 player（如果 player 唔喺 allCars 入面）
 ctx.save();
 ctx.translate(player.x, player.y);
 ctx.rotate(player.angle + Math.PI / 2);
+// --- 加入閃爍判斷 ---
+if (player.isInvincible > 0) {
+    player.isInvincible--;
+    // 每 5 幀切換一次透明度，產生閃爍感
+    if (Math.floor(Date.now() / 100) % 2 === 0) {
+        ctx.globalAlpha = 0.3;
+    }
+}
+// ------------------
 if (player.img && player.img.complete) {
     ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
 }
@@ -2811,7 +2420,6 @@ if (gameState === 'racing' || gameState === 'countdown') {
 // 只有不在標題時才畫 AI 頭像和通訊框
 if (gameState !== "title") {
     drawSingleAIAvatar(ctx);
-    
     if (activeComm.isActive) {
         activeComm.timer--;
         if (activeComm.timer <= 0) activeComm.isActive = false;
@@ -2820,10 +2428,7 @@ if (gameState !== "title") {
 }
 ctx.restore();
 // === Camera transform 結束 ===
-
-
-
- // --- Lifting Turn 中央大字 ---
+// --- Lifting Turn 中央大字 ---
   if (liftingTurnBannerTimer > 0) {
     liftingTurnBannerTimer--;
 
@@ -2936,49 +2541,29 @@ ctx.restore();
     ctx.fillRect(0, 0, W, H);
   }
 
-
 if (gameState === 'racing' && !raceFinished)  {
-
   const FORWARD_DAMPING_AI = 0.988;
- 
   const deltaTime = 1/60;
-
   const trackData = TRACKS[currentTrack];
-
   if (!trackData)  {
-
     return;
-
   }
 
 const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
-
 const PIT_PARKING_INDEX = PIT_WAYPOINTS_COUNT > 2 ? PIT_WAYPOINTS_COUNT - 2 : -1;
-
 const PIT_EXIT_INDEX = PIT_WAYPOINTS_COUNT > 0 ? PIT_WAYPOINTS_COUNT - 1 : -1;
-
 const PIT_LANE_DIST_SCALED = 50 * SCALE;
 
 allCars.forEach(car =>  {
-
   if (car.isPlayer) return;
-
   const prevAngle = car.angle;
-
   if (car.tireHealth == null)  {
-
     car.tireHealth = [100, 100, 100, 100];
-
     car.inPit = false;
-
     car.pitTimer = 0;
-
     car.pitCondition = 'out';
-
     car.lapsSincePit = 0;
-
     car.pitWaypointIndex = 0;
-
   }
 
 updateTireWear(car, deltaTime);
@@ -2997,7 +2582,6 @@ updateTireWear(car, deltaTime);
       }
   }
  
-
 if (car.inPit) {
     // 停車換胎中
     if (car.pitTimer < PIT_STOP_DURATION) {
@@ -3068,37 +2652,21 @@ else if (car.pitCondition === 'entering' || car.pitCondition === 'exiting') {
     }
 }
 else  {
-
   const avgHealth = car.tireHealth.reduce((a, b) => a + b, 0) / 4;
-
   if (avgHealth < MUST_PIT_THRESHOLD && trackData.pitEntry)  {
-
     const unscaledCarX = car.x / SCALE;
-
     const unscaledCarY = car.y / SCALE;
-
     const dx = unscaledCarX - trackData.pitEntry.x;
-
     const dy = unscaledCarY - trackData.pitEntry.y;
-
     const distToEntry = Math.hypot(dx, dy);
-
     const PIT_ENTRY_DIST = 150;
-
     if (distToEntry < PIT_ENTRY_DIST)  {
-
       car.pitCondition = 'entering';
-
       car.pitWaypointIndex = 0;
-
     }
-
 }
-
 followWaypoints(car);
-
 }
-
 // ==========================================
 // IMPROVED AI PIT DECISION LOGIC
 // ==========================================
@@ -3128,72 +2696,43 @@ if (car.aiWantsToPit && car.pitCondition === 'out') {
 }
 
 car.forwardSpeed *= FORWARD_DAMPING_AI;
-
 car.speed = Math.hypot(car.forwardSpeed || 0, car.sideSpeed || 0);
-
 let turnRate = car.angle - prevAngle;
-
 turnRate = Math.atan2(Math.sin(turnRate), Math.cos(turnRate));
-
 car.lastTurnRate = turnRate;
-
 const TIRE_MARK_THRESHOLD = 0.18;
- 
 const AI_MAX_SPEED = (car && typeof car.maxSpeedLimit === 'number') ? car.maxSpeedLimit : 26.0;
- 
 const DRIFT_SPEED_THRESHOLD = AI_MAX_SPEED * 0.18;
- 
 const aiForward = Math.abs(car.forwardSpeed || 0);
-
 const aiDriftAmt = Math.abs(car.driftAngle || 0);
-
 const isDrifting = (aiForward > DRIFT_SPEED_THRESHOLD) && (Math.abs(turnRate) > 0.012 || Math.abs(car.sideSpeed) > TIRE_MARK_THRESHOLD || aiDriftAmt > 0.12);
-
 const rearX = car.x + Math.cos(car.angle + Math.PI) * (CARHEIGHT / 2);
-
 const rearY = car.y + Math.sin(car.angle + Math.PI) * (CARHEIGHT / 2);
-
 const perpX = Math.cos(car.angle + Math.PI / 2);
-
 const perpY = Math.sin(car.angle + Math.PI / 2);
-
 const lateralOffset = CARWIDTH / 2 * 0.7;
- 
 const currentX_L = rearX + perpX * lateralOffset;
-
 const currentY_L = rearY + perpY * lateralOffset;
-
 const currentX_R = rearX - perpX * lateralOffset;
-
 const currentY_R = rearY - perpY * lateralOffset;
-
 const lastX_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.x : currentX_L;
-
 const lastY_L = car.lastTireMarkPosL ? car.lastTireMarkPosL.y : currentY_L;
-
 const lastX_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.x : currentX_R;
-
 const lastY_R = car.lastTireMarkPosR ? car.lastTireMarkPosR.y : currentY_R;
 
 if (isDrifting)  {
-
   const TIRE_MARK_LIFE = 60;
- 
   tireMarks.push( {
-
     x1: lastX_L, y1: lastY_L, x2: currentX_L, y2: currentY_L,
     life: TIRE_MARK_LIFE 
   }
 );
 
-tireMarks.push( {
-
+tireMarks.push({
   x1: lastX_R, y1: lastY_R, x2: currentX_R, y2: currentY_R,
   life: TIRE_MARK_LIFE 
 });
-
 emitDustForCar(car, false, AI_MAX_SPEED);
-
 }
 
 car.lastTireMarkPosL =  {
@@ -3203,7 +2742,6 @@ car.lastTireMarkPosL =  {
 car.lastTireMarkPosR =  {
   x: currentX_R, y: currentY_R
 };
-
 // --- 1. AI Boost Logic & Straight Detection ---
         if (car.aiBoostCooldown > 0) car.aiBoostCooldown--;
 
@@ -3234,33 +2772,19 @@ car.lastTireMarkPosR =  {
             }
         }
 
-
-
 const AI_SPEED_FLAME_FIXED = 27.5;
-
 const AI_SPEED_FLAME_THRESHOLD = Math.min(AI_MAX_SPEED * 0.2, AI_SPEED_FLAME_FIXED);
-
 const aiTotalSpeed = Math.abs(car.speed || 0);
-
 if (car.isBoosting)  {
-
   if (Math.random() < 0.9) emitBoostForCar(car, false);
-
 }
 else  {
-
   const carMaxSpeed = getCarMaxSpeed(car);
-
   const currentSpeed = Math.abs(car.forwardSpeed || car.speed || 0);
-
   const speedRatio = currentSpeed / carMaxSpeed;
-
   const speedRatioForFlame = 0.18;
-
   if (speedRatio >= speedRatioForFlame)  {
-
     emitAeroAirflow(car, false);
-
   }
 }
 
@@ -3273,7 +2797,6 @@ else  {
           requestComm(driverName, "pit");
       }
   }
-
 });
 
 // ★★★ 新增：AI 互相碰撞檢查（放喺 allCars.forEach 之後） ★★★
@@ -3283,363 +2806,201 @@ for (let i = 0; i < allCars.length; i++) {
     }
 }
 
-
 const wantsForwardVfx = (keys.ArrowUp || touch.up);
-
 const playerBoostingActive = isBoosting && wantsForwardVfx && boostMeter > 0 && boostCooldown <= 0;
-
 const playerSteeringActive = (keys.ArrowLeft || touch.left || keys.ArrowRight || touch.right);
 
 if (!playerBoostingActive && !playerSteeringActive && wantsForwardVfx)  {
-
-    
   const playerMaxSpeed = getCarMaxSpeed(player);
-
   const speedFlameThreshold = playerMaxSpeed - 6.9;
-
-    
   if (player.speed > speedFlameThreshold)  {
-
-        
     const speedRatio = (player.speed - speedFlameThreshold) / 2;
-
     const flameIntensity = Math.min(1, Math.max(0, speedRatio));
-
-        
-        
     if (Math.random() < flameIntensity * 0.8)  {
-
       emitAeroAirflow(player, true);
-        
     }   
 }}}
 
 boostParticles = boostParticles.filter(p =>  {
-
   p.x += p.vx;
-
   p.y += p.vy;
-
   p.life--;
-
   p.vy += (p.gravity || 0.1);
-
   return p.life > 0;
-
 });
 
 tireMarks = tireMarks.filter(mark =>  {
-
   mark.life--;
-
   return mark.life > 0;
-
 });
 
 dustParticles = dustParticles.filter(p =>  {
-
   p.x += p.vx;
-
   p.y += p.vy;
-
   p.life--;
-
   p.vx *= 0.9;
-
   p.vy *= 0.9;
-
   return p.life > 0;
-
 });
 
 
 ctx.save();
-
 ctx.translate(W / 2, H / 2);
-
 ctx.rotate(player.angle + Math.PI / 2);
-
-
 ctx.restore();
 
 if (gameState === 'countdown')  {
-
   drawStartLights(ctx, W, H, countdownStartTime);
-
   requestAnimationFrame(loop);
-
   return;
-
 }
 
 if (gameState === 'racing' && !raceFinished)  {
-
   player.raceTime++;
-
   const deltaTime = 1/60;
-
   if (!trackData) return;
-
   player.tireHealth = tireHealth;
-
   updateTireWear(player, deltaTime);
-
   tireHealth = player.tireHealth;
-
   const playerAvgHealth = tireHealth.reduce((a, b) => a + b, 0) / 4;
-
   const PIT_LANE_DIST_SCALED = 50 * SCALE;
-
   const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
-
   const PIT_PARKING_INDEX = PIT_WAYPOINTS_COUNT - 3;
-
   const PIT_EXIT_INDEX = PIT_WAYPOINTS_COUNT - 1;
-
   if (inPit)  {
-
     player.pitTimer = (player.pitTimer || 0) + deltaTime;
-
     playerAutoDriving = true;
-
     player.speed = 0;
-
     player.forwardSpeed = 0;
-
     player.sideSpeed = 0;
-
     document.getElementById('lapHud').textContent = `PIT STOP: ${Math.ceil(PIT_STOP_DURATION - player.pitTimer)}s`;
-
     if (player.pitTimer >= PIT_STOP_DURATION)  {
-
       tireHealth = [100, 100, 100, 100];
-
       inPit = false;
-
       player.pitTimer = 0;
-
       playerPitWaypointIndex = PIT_PARKING_INDEX + 1;
-
       document.getElementById('lapHud').textContent = `PIT LANE - EXITING`;
-
     }
-
 }
- 
-
 else if (playerAutoDriving && trackData.pitWaypoints && trackData.pitWaypoints.length >= 3)  {
-
   const targetWaypoint_unscaled = trackData.pitWaypoints[playerPitWaypointIndex];
-
   if (targetWaypoint_unscaled && playerPitWaypointIndex <= PIT_EXIT_INDEX)  {
-
     const targetX_scaled = targetWaypoint_unscaled.x * SCALE;
-
     const targetY_scaled = targetWaypoint_unscaled.y * SCALE;
-
     const targetAngle = Math.atan2(targetY_scaled - player.y, targetX_scaled - player.x);
-
     let angleDiff = targetAngle - player.angle;
-
     angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
-
     player.angle += angleDiff * 0.1;
-
     player.forwardSpeed = Math.min(player.forwardSpeed + 0.5, PIT_LANE_SPEED_LIMIT);
-
     player.sideSpeed = 0;
-
     player.x += Math.cos(player.angle) * player.forwardSpeed * MOVE_SCALE;
-
     player.y += Math.sin(player.angle) * player.forwardSpeed * MOVE_SCALE;
-
     player.speed = player.forwardSpeed;
-
     const distToTarget_scaled = Math.hypot(targetX_scaled - player.x, targetY_scaled - player.y);
-
     if (playerPitWaypointIndex === PIT_PARKING_INDEX)  {
-
       if (distToTarget_scaled < PIT_PARKING_DIST_SCALED * SCALE)  {
-
         playerAutoDriving = false;
-
         inPit = true;
-
         player.pitTimer = 0;
-
       }
-
   }
 else if (distToTarget_scaled < PIT_LANE_DIST_SCALED)  {
-
   playerPitWaypointIndex++;
-
 }
-
 }
 else  {
-
   playerAutoDriving = false;
-
   inPit = false;
-
   player.forwardSpeed = Math.min(player.forwardSpeed || 0, 10.0);
-
   player.sideSpeed = 0;
-
   if (!playerAutoDriving && !inPit) {
   document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
   }
   playerPitWaypointIndex = 0;
-
 }
-
 }
-
 else if (trackData.pitEntry && !playerAutoDriving)  {
-
 const playerX = player.x;
 const playerY = player.y;
 const entryX = trackData.pitEntry.x * SCALE; // Scale the entry point to match player.x
 const entryY = trackData.pitEntry.y * SCALE;
-
 const dx = playerX - entryX;
 const dy = playerY - entryY;
 const distToEntry = Math.hypot(dx, dy);
-
 const PIT_ENTRY_TRIGGER_DIST = 150 * SCALE;
-
 const pitHudPrompt = document.getElementById('pitHudPrompt');
-
    if (distToEntry < PIT_ENTRY_TRIGGER_DIST && (wantsToPit || playerAvgHealth < 20))  {
-
     playerAutoDriving = true;
-
     playerPitWaypointIndex = 0;
-
     inPit = false;
-
     keys =  { };
-
     touch =  { };
-
 	wantsToPit = false;
-
 	if (pitHudPrompt) pitHudPrompt.style.display = 'none';
-
 	document.getElementById('lapHud').textContent = `PIT LANE - ENTERING`;
-
 	}
- 
-
 if (wantsToPit)  {
-
   if (pitHudPrompt)  {
-
     pitHudPrompt.style.display = 'block';
-
     pitHudPrompt.textContent = "PIT REQUESTED";
-
     pitHudPrompt.style.backgroundColor = "rgba(0, 120, 255, 0.8)";
-
     pitHudPrompt.style.borderColor = "#00ffff";
-	
   }
-
 }
-
 else if (distToEntry < PIT_ENTRY_TRIGGER_DIST)  {
-
   if (pitHudPrompt)  {
-
     pitHudPrompt.style.display = 'block';
-
     pitHudPrompt.textContent = "READY TO PIT (P)";
-
     pitHudPrompt.style.backgroundColor = "rgba(255, 165, 0, 0.8)";
-
     pitHudPrompt.style.borderColor = "#ffffff";
-	
   }
 }
-
 else  {
   if (pitHudPrompt) pitHudPrompt.style.display = 'none';
 }
 }
 
 if (!playerAutoDriving)  {
-
   const FORWARD_DAMPING_PLAYER = 0.9965;
-
   const STEERING_RATE = 0.038 * player.spec.handling * 0.38;
-
   const ACCEL_RATE = player.spec.acceleration * 0.00975 * SPEED_UNIT_SCALE;
-
   const MAX_SPEED = 32;
-
   let acceleration = 0;
-
   let steering = 0;
-
   const wantsForward = (keys.ArrowUp || touch.up);
-
   if (wantsForward) acceleration = ACCEL_RATE;
-
   if (keys.ArrowDown || touch.down)  {
-
     if ((player.forwardSpeed || 0) > 0.2)  {
-
       player.forwardSpeed *= 0.92;
-
       acceleration = 0;
-
     }
   else  {
-
     acceleration = -0.18;
-
   }
-
 }
 
 if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
-
 if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
 
 const boostingActive = isBoosting && wantsForward && boostMeter > 0 && boostCooldown <= 0;
-
 const maxSpeedNow = boostingActive ? (MAX_SPEED * BOOST_SPEED_MULTIPLIER) : MAX_SPEED;
 
 if (boostingActive)  {
-
   acceleration *= 1.25;
-
   boostMeter = Math.max(0, boostMeter - BOOST_DRAIN_RATE);
-  
   if (!activeComm.isActive && Math.random() < 0.01) requestComm(player.spec.driver, "boost");
-
   if (Math.random() < 0.7) emitBoostForCar(player, true);
-
   if (boostMeter <= 0) boostCooldown = 60;
-
 }
 else  {
-
   if (boostCooldown <= 0 && boostMeter < 1.0)  {
-
     boostMeter = Math.min(1.0, boostMeter + BOOST_RECHARGE_RATE);
-
   }
-
 }
 
 steering = Math.max(-0.4, Math.min(steering, 0.4));
-
 player.forwardSpeed = (player.forwardSpeed || player.speed || 0) + acceleration;
-
 const MAX_REVERSE_SPEED = 3.0;
-
 player.forwardSpeed = Math.max(-MAX_REVERSE_SPEED, Math.min(player.forwardSpeed, maxSpeedNow));
 
 // 一般轉向
@@ -3949,44 +3310,26 @@ if (player && gameState === 'racing') {
 }
 
 player.speed = totalSpeed;
-
 player.driftAngle = driftAngle;
-
 const TIRE_MARK_THRESHOLD = 8.0;
-
 const DRIFT_SPEED_THRESHOLD = MAX_SPEED * 0.55;
-
 const isDrifting = player.speed > DRIFT_SPEED_THRESHOLD && Math.abs(player.sideSpeed) > TIRE_MARK_THRESHOLD;
-
 const rearX = player.x + Math.cos(player.angle + Math.PI) * (CARHEIGHT / 2);
-
 const rearY = player.y + Math.sin(player.angle + Math.PI) * (CARHEIGHT / 2);
-
 const perpX = Math.cos(player.angle + Math.PI / 2);
-
 const perpY = Math.sin(player.angle + Math.PI / 2);
-
 const lateralOffset = CARWIDTH / 2 * 0.7;
-
 const currentX_L = rearX + perpX * lateralOffset;
-
 const currentY_L = rearY + perpY * lateralOffset;
-
 const currentX_R = rearX - perpX * lateralOffset;
-
 const currentY_R = rearY - perpY * lateralOffset;
-
 const lastX_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.x : currentX_L;
-
 const lastY_L = player.lastTireMarkPosL ? player.lastTireMarkPosL.y : currentY_L;
-
 const lastX_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.x : currentX_R;
-
 const lastY_R = player.lastTireMarkPosR ? player.lastTireMarkPosR.y : currentY_R;
 
 if (isDrifting) {
     const TIREMARKLIFE = 60;
-
     // 胎印照畫（無論係普通甩尾定 Lifting Turn）
     tireMarks.push({
         x1: lastX_L, y1: lastY_L,
@@ -4043,132 +3386,77 @@ if (boostBar) {
 }
 
 if (boostCooldown > 0) boostCooldown--;
-
 drawDashboard(player.speed);
-
 drawTireMonitor(player, tireMonitorCtx);
-
 const startLineY = TRACKS[currentTrack].start.y * SCALE;
-
 if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1)  {
-
   lap++;
-
   if (lap > totalLaps)  {
-
     raceFinished = true;
-
     gameState = 'finished';
-
     const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-
     const pos = sorted.findIndex(c => c === player) + 1;
-
     document.getElementById('finalPos').textContent =
     `FINAL POS #${pos}/${allCars.length + 1}`;
-
     document.getElementById('finishScreen').style.display = 'flex';
-
   }
-
 }
 
 player.prevY = player.y;
-
 const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-
 const pos = sorted.findIndex(c => c === player) + 1;
 
 if (!playerAutoDriving && !inPit) {
     document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
 }
-
 document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
-
-// ===== 世界層結束 =====
 }
- 
+// ===== 世界層結束 =====
 
 if (inPit)  {
-
   if (player.speed < 0.1)  {
- 
     player.speed = 0;
-
     player.forwardSpeed = 0;
-
     player.sideSpeed = 0;
-
     document.getElementById('lapHud').textContent = `PIT STOP: ${Math.ceil(PIT_STOP_DURATION - pitTimer)}s`;
-
     pitTimer += deltaTime;
-
     if (pitTimer >= PIT_STOP_DURATION)  {
-
       tireHealth = [100, 100, 100, 100];
-
       inPit = false;
-
       pitTimer = 0;
-
       playerAutoDriving = true;
-
       if (trackData.pitWaypoints && trackData.pitWaypoints.length >= 3)  {
-
         const PIT_PARKING_INDEX = trackData.pitWaypoints.length - 3;
-
         playerPitWaypointIndex = PIT_PARKING_INDEX + 1;
-
       }
     else  {
-
       playerAutoDriving = false;
-
 	  if (!playerAutoDriving && !inPit) {
       document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
 	  }
     }
-
-}
-
-}
-
-}
+}}}
 
 if (playerAvgHealth <= CRITICAL_HEALTH && gameState === 'racing')  {
-
   player.speed = 0;
-
   player.forwardSpeed = 0;
-
   player.sideSpeed = 0;
-
   if (!raceFinished)  {
-
     document.getElementById('gameOverText').textContent = '輪胎嚴重損壞！比賽中止。請下次及時進 Pit 站更換輪胎。';
-
     document.getElementById('gameOverScreen').style.display = 'flex';
-
     gameState = 'finished';
-
   }
-
 }
 
-
-
 if (gameState !== "title")  {
-
-
   drawSingleAIAvatar(ctx);
-  
+ 
   // 處理廣播冷卻計時 (貼在這裡)
   if (activeComm.isActive) {
       activeComm.timer--;
       if (activeComm.timer <= 0) activeComm.isActive = false;
   }
   if (activeComm.cooldown > 0) activeComm.cooldown--;  
-
 }
 
 if (gameState === 'racing') {
@@ -4264,6 +3552,10 @@ if (aiMsg !== "" || isBoosting) {
             aiMsg = modeNotifyText;
             // The timer is handled at the end of the loop or here
             modeNotifyTimer--; 
+			    // 增加一個保護：當計時器歸零，清空文字
+			if (modeNotifyTimer <= 0) {
+				modeNotifyText = "";
+			}
         } 
         else if (cyberSystemActive) {
             // Context-sensitive chatter when System Link is ON
@@ -4290,37 +3582,22 @@ if (aiMsg !== "" || isBoosting) {
 }
 
 if (player.speed > 25 || isBoosting)  {
-
   ctx.save();
-
   ctx.strokeStyle = isBoosting ? 'rgba(0, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.2)';
-
   ctx.lineWidth = 1.5;
-
   const lineCount = isBoosting ? 25 : 15;
-
   for (let i = 0;
   i < lineCount;
   i++)  {
-
     let angle = Math.random() * Math.PI * 2;
-
     let dist = 300 + Math.random() * 200;
-
     let len = 100 + Math.random() * 200;
-
     ctx.beginPath();
-
     ctx.moveTo(W/2 + Math.cos(angle) * dist, H/2 + Math.sin(angle) * dist);
-
     ctx.lineTo(W/2 + Math.cos(angle) * (dist + len), H/2 + Math.sin(angle) * (dist + len));
-
     ctx.stroke();
-
   }
-
 ctx.restore();
-
 }
 
 if (gameState !== 'title')  {
@@ -4386,93 +3663,58 @@ if (gameState !== 'title')  {
   });
 
   requestAnimationFrame(loop);
-
 }
-
 }
 
 window.addEventListener('load', () =>  {
-
   sandPattern = createSandPattern();
-
   const checkered = document.getElementById('checkered');
-
   for (let i = 0;
   i < 60;
   i++)  {
-
     const div = document.createElement('div');
-
     checkered.appendChild(div);
-
   }
 
 document.getElementById('startTitleBtn').onclick = () =>  {
-
   document.getElementById('titleScreen').style.display = 'none';
-
   document.getElementById('mainMenu').classList.add('active');
-  
   gameState = 'menu'; 
-
 };
 
 document.getElementById('champBtn').onclick = () => openTrackSelect('championship');
-
 document.getElementById('timeBtn').onclick = () => openTrackSelect('timeattack');
-
 document.getElementById('confirmTrackBtn').onclick = () =>  {
-
   document.getElementById('trackSelect').classList.remove('active');
-
   document.getElementById('carMenu').classList.add('active');
-
   buildCarList();
-
 };
 
 document.getElementById('confirmBtn').onclick = () =>  {
-
   document.getElementById('carMenu').classList.remove('active');
-
   playerCarImg.src = CARSPECS[selectedCar].image;
-
   playerCarImg.onload = startRace;
-
 };
 
 document.getElementById('backToMenuBtn').onclick = () =>  {
-
   document.getElementById('finishScreen').style.display = 'none';
-
   document.getElementById('mainMenu').classList.add('active');
-
   raceFinished = false;
-
 };
 
 const pitBtn = document.getElementById('pitBtn');
 
 if (pitBtn)  {
-
   const handlePitPress = (e) =>  {
-
     e.preventDefault();
-
     if (gameState === 'racing' && !playerAutoDriving)  {
-
       wantsToPit = true;
-
     }
-
 };
-
 pitBtn.addEventListener('touchstart', handlePitPress,  {
   passive: false 
 });
-
 pitBtn.addEventListener('mousedown', handlePitPress);
-
 }
 
 window.addEventListener('keydown', e => {
@@ -4501,17 +3743,14 @@ window.addEventListener('keydown', e => {
 });
 
 window.addEventListener('keyup', e => {
-	
     if (e.code === 'Space' || e.code === 'KeyX') {
         keys['Space'] = false;
     }
-	
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         keys[e.key] = false;
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') isDriftMode = false;
     }
 });
-
 
 const upBtn = document.getElementById('btnUp');
 const downBtn = document.getElementById('btnDown');
@@ -4558,15 +3797,9 @@ if (boostBtn) {
         keys['Space'] = false;  // 放開 Space
     }, {passive: false});
 }
-
 loadTrack(0);
-
 if (!raceFinished)  {
-
   requestAnimationFrame(loop);
-
 }
-
 });
-
 });
