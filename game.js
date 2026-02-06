@@ -134,6 +134,8 @@ const PIT_STOP_WAYPOINT_INDEX = -1;
 
 let sandPattern = null;
 
+let lastPlayerMode = "";
+
 const miniCanvas = document.getElementById('minimapCanvas');
 const miniCtx = miniCanvas.getContext('2d');
 const MW = miniCanvas.width, MH = miniCanvas.height;
@@ -268,7 +270,7 @@ function checkOffTrack(car) {
 
     const dist = Math.sqrt(minSquareDist);
     const roadWidthThreshold = (95 * SCALE); 
-    const resetThreshold = (600 * SCALE); // 稍微放大重置範圍，減少誤觸
+    const resetThreshold = (350 * SCALE); // 稍微放大重置範圍，減少誤觸
 
     // --- 修正後的邏輯 ---
     if (dist > resetThreshold) {
@@ -613,7 +615,7 @@ ctx.stroke();
 ctx.restore();
 
 ctx.save();
-ctx.lineWidth = 1000 * SCALE; // 非常寬
+ctx.lineWidth = 350 * SCALE; // 非常寬
 ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)'; // 淡淡的黑色影子
 ctx.beginPath();
 ctx.moveTo(wps[0].x * SCALE, wps[0].y * SCALE);
@@ -1106,6 +1108,7 @@ function checkCollisions(car1, car2)  {
     car2.y += ny * push;
     car1.forwardSpeed *= 0.9;
     car2.forwardSpeed *= 0.9;
+	emitCollisionSparks((car1.x + car2.x)/2, (car1.y + car2.y)/2);
   }
 }
 
@@ -1844,34 +1847,39 @@ function switchCarImage(car, isCurrentlyBoosting = false) {
     const isSpecialCar = originalPath.toUpperCase().includes("OGRE");
 
     let targetSuffix = ".png";
+    let currentModeName = "CIRCUIT"; // 用來記錄模式名稱
 
-    // --- 優先權邏輯：Boost 優先於 Aero ---
     if (isCurrentlyBoosting && spec.hasBoost) {
-        // 如果是 Ogre 或無 Aero 車用 _Boost，有 Aero 車用 _ABoost
         targetSuffix = (isSpecialCar || !spec.hasAero) ? "_Boost.png" : "_ABoost.png";
+        currentModeName = "BOOST";
     } 
     else if (car.isAeroMode && spec.hasAero) {
         targetSuffix = "_ABoost.png";
+        currentModeName = "AERO";
     }
 
     const targetSrc = basePath + targetSuffix;
 
-    // --- 防止閃爍：只有當路徑真的不同時才更換 ---
     if (car.img) {
-        // 取得目前的檔名 (去掉網域路徑)
         const currentSrc = car.img.src;
-        // 如果目前顯示的已經是目標圖片，直接返回
-        if (currentSrc.endsWith(targetSrc)) return;
+        
+        // --- 修正震動邏輯：改用模式名稱比對 ---
+        if (car === player) {
+            if (lastPlayerMode !== currentModeName) {
+                // 模式真的變了，且速度夠快才震動
+                if (player.speed > 5) {
+                    player.transformShake = 15; 
+                }
+                lastPlayerMode = currentModeName;
+            }
+        }
 
-        // 如果不同，才進行更換
-        let tempImg = new Image();
-        tempImg.src = targetSrc;
-        tempImg.onload = () => {
-            car.img.src = targetSrc;
-        };
-        tempImg.onerror = () => {
-            if (targetSuffix !== ".png") car.img.src = originalPath;
-        };
+        // 只有圖片不同才更換
+        if (!currentSrc.endsWith(targetSrc)) {
+            let tempImg = new Image();
+            tempImg.src = targetSrc;
+            tempImg.onload = () => { car.img.src = targetSrc; };
+        }
     }
 }
 
@@ -2184,6 +2192,27 @@ function drawCarMiniBubble(ctx, car) {
     ctx.restore();
 }
 
+function emitCollisionSparks(x, y) {
+    for (let i = 0; i < 12; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 5;
+        boostParticles.push({
+            type: 'spark',
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle: angle,
+            length: 5 + Math.random() * 8,
+            width: 2,
+            life: 15 + Math.random() * 10,
+            maxLife: 25,
+            gravity: 0.2, // 火花會下墜
+            color: '#fff' // 白色偏黃火花
+        });
+    }
+}
+
 function loop()  {
   if (gameState === 'paused' || raceFinished)  {
     return;
@@ -2399,6 +2428,94 @@ if (player.img && player.img.complete) {
     ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
 }
 ctx.restore();
+
+// --- 繪製玩家賽車 ---
+ctx.save();
+
+// [新增：變形震動效果]
+let shakeX = 0, shakeY = 0;
+if (player.transformShake > 0) {
+    player.transformShake--;
+    shakeX = (Math.random() - 0.5) * 10;
+    shakeY = (Math.random() - 0.5) * 10;
+}
+
+ctx.translate(player.x + shakeX, player.y + shakeY);
+ctx.rotate(player.angle + Math.PI / 2);
+
+// [原本的閃爍與繪圖邏輯...]
+if (player.isInvincible > 0) {
+    player.isInvincible--;
+    if (Math.floor(Date.now() / 100) % 2 === 0) ctx.globalAlpha = 0.3;
+}
+
+if (player.img && player.img.complete) {
+    ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+}
+ctx.restore();
+
+// ====== [ Slipstream 2.0 視覺效果 ] ======
+if (player.isDrafting) {
+    ctx.save();
+    
+    // 1. 畫出極淡的氣流線 (更加透明，只有 0.1)
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([30, 20]);
+    ctx.lineDashOffset = -Date.now() / 5; // 流動速度
+
+    const sideOffsets = [-35, -15, 15, 35]; // 四條細線
+    for (let offset of sideOffsets) {
+        ctx.beginPath();
+        const startX = player.x + Math.cos(player.angle + Math.PI/2) * offset;
+        const startY = player.y + Math.sin(player.angle + Math.PI/2) * offset;
+        ctx.moveTo(startX, startY);
+        // 線條向前方延伸
+        ctx.lineTo(startX + Math.cos(player.angle) * 250, startY + Math.sin(player.angle) * 250);
+        ctx.stroke();
+    }
+
+    // 2. 畫出科技感鎖定框 (在被吸的那架 AI 車身上)
+    allCars.forEach(car => {
+        const dx = car.x - player.x;
+        const dy = car.y - player.y;
+        const dist = Math.hypot(dx, dy);
+        
+        // 找出正在被玩家「補吸」的那架車
+        if (dist < 1000 && dist > 100) {
+            const angleToOther = Math.atan2(dy, dx);
+            const angleDiff = Math.abs(Math.atan2(Math.sin(angleToOther - player.angle), Math.cos(angleToOther - player.angle)));
+            
+            if (angleDiff < 0.3) {
+                // 在 AI 車身上畫一個青色瞄準框
+                ctx.strokeStyle = "#00ffff";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([]); // 實線
+                const s = 80; // 框的大小
+                
+                ctx.save();
+                ctx.translate(car.x, car.y);
+                // 畫四個角落的 L 型
+                const len = 20;
+                for(let r=0; r<4; r++) {
+                    ctx.rotate(Math.PI/2);
+                    ctx.beginPath();
+                    ctx.moveTo(s/2 - len, s/2);
+                    ctx.lineTo(s/2, s/2);
+                    ctx.lineTo(s/2, s/2 - len);
+                    ctx.stroke();
+                }
+                
+                // 顯示距離文字
+                ctx.fillStyle = "#00ffff";
+                ctx.font = "bold 12px Rajdhani";
+                ctx.fillText(`SLIPSTREAM: ${Math.round(dist/10)}m`, s/2 + 5, -s/2);
+                ctx.restore();
+            }
+        }
+    });
+    ctx.restore();
+}
 
 drawCarMiniBubble(ctx, player);
 
@@ -3621,6 +3738,34 @@ if (gameState !== 'title')  {
     
     // Apply Cyber System Logic
     updateCyberSystemLogic();
+	
+        // ====== [新增：空氣補吸 Slipstream 邏輯] ======
+        player.isDrafting = false; // 每一幀重置狀態
+        allCars.forEach(otherCar => {
+            if (otherCar.inPit || otherCar.pitCondition !== 'out') return;
+
+            const dx = otherCar.x - player.x;
+            const dy = otherCar.y - player.y;
+            const dist = Math.hypot(dx, dy);
+
+            // 距離在 150 到 1000 單位之間 (SCALE 後約兩三個車位)
+            if (dist < 1000 && dist > 150) {
+                const angleToOther = Math.atan2(dy, dx);
+                // 檢查玩家車頭是否正對著前車
+                const angleDiff = Math.abs(Math.atan2(Math.sin(angleToOther - player.angle), Math.cos(angleToOther - player.angle)));
+                
+                if (angleDiff < 0.3) { // 角度在約 17 度內
+                    player.isDrafting = true;
+                    player.forwardSpeed += 0.08; // 給予持續的額外推力
+                    
+                    // 隨機讓 Asurada 提醒你
+                    if (Math.random() < 0.005) {
+                        requestComm("Kazami", "random"); // "Slipstream engaged!"
+                    }
+                }
+            }
+        });
+        // =============================================	
 
     // Modify player speed based on off-track factor
     player.forwardSpeed *= offTrackFactor; 
