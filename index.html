@@ -210,14 +210,29 @@
 		/* --- RIGHT UI COLUMN (Dashboard + Boost) --- */
 		#rightUI {
 			position: absolute;
-			right: 2vw;
-			bottom: 4vh;
+			right: 1.5vw;
+			bottom: 3vh;
 			display: flex;
-			flex-direction: column; /* 讓元素由上至下排列 */
-			align-items: flex-end;
-			gap: 1.5vh; /* 每個組件之間的間距 */
+			flex-direction: column; /* 由上至下堆疊 */
+			align-items: flex-end; /* 全部靠右對齊 */
+			gap: 1vh; /* 每個組件之間的動態間距 */
 			z-index: 100;
 			pointer-events: none;
+			max-height: 90vh; /* 防止 UI 超過螢幕高度 */
+		}
+
+		/* 讓面板在手機上自動縮小 */
+		@media screen and (max-width: 768px) {
+			#rankingHUD, #lapTimerHUD {
+				width: 140px !important;
+				padding: 5px;
+			}
+			#lapTimerDisplay {
+				font-size: 16px !important;
+			}
+			#rankingList {
+				font-size: 11px !important;
+			}
 		}
 
 		/* 統一的 Cyber 面板風格 */
@@ -1048,8 +1063,23 @@
         <div id="posHud">POS #1/11</div>
         <div id="countdown"></div>
 		<div id="cyberPrompt">Tap Avatar: System Link</div>
-        <div id="rightUI" style="display: none;">
-			<!-- 3. 最上方：無線電通訊 (Radio Comm) -->
+		<div id="rightUI" style="display: none;">
+			<!-- 1. 最上方：實時排名面板 -->
+			<div id="rankingHUD" class="cyber-panel" style="width: 200px;">
+				<div class="radio-header" style="color: #ff8c00;">LIVE RANKING</div>
+				<div id="rankingList" style="font-size: 14px; line-height: 1.4;">
+					<!-- JS 會在這裡產生排名 -->
+				</div>
+			</div>
+
+			<!-- 2. 圈速計時面板 -->
+			<div id="lapTimerHUD" class="cyber-panel" style="width: 200px; text-align: center;">
+				<div class="radio-header" style="color: #00ffff;">LAP TIME</div>
+				<div id="lapTimerDisplay" style="font-size: 22px; font-weight: 700; font-family: 'Orbitron';">00:00.00</div>
+				<div style="font-size: 11px; color: #aaa; margin-top: 2px;">BEST: <span id="bestLapDisplay">--:--.--</span></div>
+			</div>
+
+			<!-- 3. 無線電通訊 (原本有的) -->
 			<div id="radioHUD" class="cyber-panel" style="display: none;">
 				<div class="radio-header">RADIO LINK: <span id="radioDriverName"></span></div>
 				<div class="radio-body">
@@ -1057,15 +1087,17 @@
 					<div id="radioText"></div>
 				</div>
 			</div>
-			<!-- 2. 中間：模式顯示 (Mode HUD) -->
+
+			<!-- 4. 模式顯示 (原本有的) -->
 			<div id="modeHUD" class="cyber-panel">
 				<span id="modeText">[ CIRCUIT ]</span>
 			</div>
-			<!-- 1. 最下方：原本的儀表板 -->		
+
+			<!-- 5. 儀表板與 Boost Bar (原本有的) -->
 			<canvas id="dashboardCanvas" width="400" height="250"></canvas>
 			<div id="boostBarContainer">
 				<div id="boostBar"></div>
-			</div>			
+			</div>
 		</div>
 
         <canvas id="minimapCanvas" width="300" height="300"></canvas>
@@ -1088,6 +1120,9 @@
           display: none;">
           PIT
         </div>
+		
+	
+		
     </div>
 
     <!-- ★ 正確的 Mobile Controls Wrapper -->
