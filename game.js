@@ -1551,6 +1551,9 @@ const t = TRACKS[currentTrack];
 const GRID_SPACING = 200;
 const ROW_SPACING = 120;
 if (mode === 'championship')  {
+	lap = 1; // 從第一圈開始
+    currentLapStartTime = Date.now(); // 重置計時
+    raceFinished = false;
   const a = CARSPECS.map((_, i) => i).filter(i => i !== selectedCar);
   const chosen = [];
   while (chosen.length < 10 && a.length > 0)  {
@@ -2235,15 +2238,13 @@ function formatMsToTime(ms) {
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
 }
 
-function updateRaceRanking() {
+// 新增：統一排名計算法，確保 POS 和 Top 5 一致
+function calculateCurrentRankings() {
     const trackWpCount = TRACKS[currentTrack].waypoints.length;
-    
-    // 獲取所有車的進度
     let rankings = allCars.concat(player).map(car => {
-        // AI 的 currentLap 可能需要初始化，如果沒有就預設為 1
-        const cLap = car === player ? lap : (car.currentLap || 1);
-        const progress = (cLap * trackWpCount) + (car.waypointIndex || 0);
-        
+        const cLap = (car === player) ? lap : (car.currentLap || 1);
+        // 權重：圈數第一，路點第二。圈數 * 100000 確保圈數領先者永遠排前面
+        const progress = (cLap * 100000) + (car.waypointIndex * 100);
         const driverKey = car.spec.driver || "default";
         return {
             name: DRIVER_DATA[driverKey]?.name || "RACER",
@@ -2251,11 +2252,17 @@ function updateRaceRanking() {
             isPlayer: car === player
         };
     });
+    return rankings.sort((a, b) => b.progress - a.progress);
+}
 
-    // 排序
-    rankings.sort((a, b) => b.progress - a.progress);
+function updateRaceRanking() {
+    const rankings = calculateCurrentRankings();
+    
+    // 更新右上角的 POS 文字 (POS #1/11)
+    const playerRank = rankings.findIndex(r => r.isPlayer) + 1;
+    document.getElementById('posHud').textContent = `POS #${playerRank}/${allCars.length + 1}`;
 
-    // 更新排名 HTML (只顯示前 5 名)
+    // 更新右側的 Top 5 列表
     const listEl = document.getElementById('rankingList');
     if (listEl) {
         let html = "";
@@ -2263,10 +2270,7 @@ function updateRaceRanking() {
             if (!rankings[i]) break;
             const r = rankings[i];
             const color = r.isPlayer ? "#00ffff" : "#ffffff";
-            const weight = r.isPlayer ? "700" : "400";
-            html += `<div style="color:${color}; font-weight:${weight}; display:flex; justify-content:space-between;">
-                        <span>#${i+1} ${r.name}</span>
-                     </div>`;
+            html += `<div style="color:${color}; font-weight:${r.isPlayer ? '700' : '400'};">#${i+1} ${r.name}</div>`;
         }
         listEl.innerHTML = html;
     }
@@ -2409,8 +2413,8 @@ if (trackData.pitWaypoints && trackData.pitWaypoints.length > 1) {
 // 3. Draw Grandstands (Crowd)
 if (grandstandImg.complete) {
     const startY = trackData.start.y * SCALE - 1000;
-    const startX = trackData.start.x * SCALE - 600;
-    for(let i = 0; i < 15; i++) {
+    const startX = trackData.start.x * SCALE - 700;
+    for(let i = 0; i < 4; i++) {
         ctx.drawImage(grandstandImg, startX, startY + (i * grandstandImg.height * 0.45));
     }
 }
@@ -2601,19 +2605,33 @@ if (player.isDrafting) {
 drawCarMiniBubble(ctx, player);
 
 // --- 1. UI 顯示狀態全時監控 (放在 loop 裡面，ctx.restore() 之後) ---
+// --- 找到 loop() 內處理 rightUI.style.display 的位置並替換 ---
 const rightUI = document.getElementById('rightUI');
 const mobileControls = document.getElementById('mobileControls');
+const rankingHUD = document.getElementById('rankingHUD'); // 錦標賽排名面板
+const lapTimerHUD = document.getElementById('lapTimerHUD'); // 計時面板
 const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+const quitBtn = document.getElementById('quitBtn');
 
-// 只有在比賽 (racing) 或 倒數 (countdown) 狀態才顯示戰鬥 UI
+// 只在「倒數中」或「比賽中」才准許顯示戰鬥 HUD
 if (gameState === 'racing' || gameState === 'countdown') {
     if (rightUI) rightUI.style.display = 'flex';
+    if (rankingHUD) rankingHUD.style.display = 'block';
+    if (lapTimerHUD) lapTimerHUD.style.display = 'block';
     if (mobileControls && isTouchDevice) mobileControls.style.display = 'flex';
-    // 新增：比賽中才顯示進度面板
+ 	if (quitBtn) quitBtn.style.display = 'block'; 
 } else {
+    // 標題、選單、完賽畫面、選車畫面：通通隱藏
     if (rightUI) rightUI.style.display = 'none';
     if (mobileControls) mobileControls.style.display = 'none';
-}
+	if (quitBtn) quitBtn.style.display = 'none'; // 其他畫面強制隱藏
+    // 額外確保計時器重置
+    if (gameState === 'menu' || gameState === 'title') {
+        currentLapStartTime = 0;
+        document.getElementById('lapTimerDisplay').textContent = "00:00.00";
+	}
+  }
+
 
 // 只有不在標題時才畫 AI 頭像和通訊框
 if (gameState !== "title") {
@@ -2754,6 +2772,15 @@ const PIT_LANE_DIST_SCALED = 50 * SCALE;
 
 allCars.forEach(car => {
   if (car.isPlayer) return;
+  const prevY = car.y; // 記錄移動前的位置
+
+    // --- 新增：AI 過線偵測 (修正排名關鍵) ---
+    const startLineY = trackData.start.y * SCALE;
+    if (!car.currentLap) car.currentLap = 1;
+    if (prevY >= startLineY && car.y < startLineY && car.pitCondition === 'out') {
+        car.currentLap++;
+    }
+  
   const prevAngle = car.angle;
   if (car.tireHealth == null) {
     car.tireHealth = [100, 100, 100, 100];
@@ -3568,17 +3595,44 @@ if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
     currentLapStartTime = Date.now(); // 重置下一圈計時
     // ========================
 
-    if (lap > totalLaps) {
+if (lap > totalLaps) {
     raceFinished = true;
     gameState = 'finished';
-    const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-    const pos = sorted.findIndex(c => c === player) + 1;
-    document.getElementById('finalPos').textContent =
-    `FINAL POS #${pos}/${allCars.length + 1}`;
+    
+    // 獲取最後排名
+    const finalRankings = calculateCurrentRankings();
+    const finalPlayerPos = finalRankings.findIndex(r => r.isPlayer) + 1;
+    
     document.getElementById('finishScreen').style.display = 'flex';
-  }
-}
+    document.getElementById('finalPos').textContent = `FINAL POS #${finalPlayerPos}`;
 
+    // 锦标赛逻辑
+    if (mode === 'championship') {
+        if (currentTrack < TRACKS.length - 1) {
+            // 還有下一關
+            document.getElementById('finalPos').textContent = `FINISHED #${finalPos}! READY FOR NEXT TRACK?`;
+            const nextBtn = document.getElementById('backToMenuBtn');
+            nextBtn.textContent = "NEXT RACE";
+            nextBtn.onclick = () => {
+                currentTrack++; // 進入下一關
+                loadTrack(currentTrack);
+                document.getElementById('finishScreen').style.display = 'none';
+                startRace();
+            };
+        } else {
+            // 全部跑完
+            document.getElementById('finalPos').textContent = `SERIES COMPLETE! FINAL POS #${finalPos}`;
+            document.getElementById('backToMenuBtn').textContent = "BACK TO MENU";
+            // 恢復原本的按鈕功能
+            setupOriginalMenuButton();
+        }
+    } else {
+        // Free Run 模式維持現狀
+        document.getElementById('finalPos').textContent = `FINAL POS #${finalPos}`;
+        document.getElementById('finishScreen').style.display = 'flex';
+    }
+}
+}
 player.prevY = player.y;
 const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
 const pos = sorted.findIndex(c => c === player) + 1;
@@ -3779,9 +3833,8 @@ if (aiMsg !== "" || isBoosting) {
 
     formattedCurrentTime = formatMsToTime(currentElapsed);
     document.getElementById('lapTimerDisplay').textContent = formattedCurrentTime;
-
-    // --- 更新排名列表 (每 10 幀算一次以節省效能) ---
-    if (Math.floor(Date.now() / 16) % 10 === 0) {
+	
+    if (Math.floor(Date.now() / 16) % 10 === 0) { // 每 10 幀更新一次排名以節省效能
         updateRaceRanking();
     }
 
@@ -3922,13 +3975,34 @@ window.addEventListener('load', () =>  {
     checkered.appendChild(div);
   }
 
+// 在檔案末尾的 load listener 裡面
+const qBtn = document.getElementById('quitBtn');
+if (qBtn) {
+    qBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (confirm("QUIT RACE?")) {
+            location.reload(); // 最簡單徹底的回主選單方法
+        }
+    };
+}
+
+
 document.getElementById('startTitleBtn').onclick = () =>  {
   document.getElementById('titleScreen').style.display = 'none';
   document.getElementById('mainMenu').classList.add('active');
   gameState = 'menu'; 
 };
 
-document.getElementById('champBtn').onclick = () => openTrackSelect('championship');
+document.getElementById('champBtn').onclick = () => {
+    mode = 'championship';
+    currentTrack = 0; // 強制從第一關開始
+    
+    // 跳過 trackSelect，直接去 carMenu
+    document.getElementById('mainMenu').classList.remove('active');
+    document.getElementById('carMenu').classList.add('active');
+    buildCarList();
+};
 document.getElementById('timeBtn').onclick = () => openTrackSelect('timeattack');
 document.getElementById('confirmTrackBtn').onclick = () =>  {
   document.getElementById('trackSelect').classList.remove('active');
