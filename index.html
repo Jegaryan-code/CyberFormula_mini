@@ -188,7 +188,7 @@
 
 		#tireMonitorContainer {
 			position: absolute;
-			bottom: 24vh;
+			bottom: 23vh;
 			left: 2vw;
 			/* Use vh for size so it scales with browser height */
 			width: 12vh; 
@@ -326,43 +326,63 @@
 		
 		/* --- Mobile 專屬縮小設定 --- */
 		@media screen and (max-width: 768px) {
-			/* 縮小組件之間的間距 */
+			/* 1. 縮小右側所有面板 */
 			#rightUI {
-				gap: 0.8vh;
-				right: 1vw;
+				gap: 5px !important;
+				right: 5px !important;
+				bottom: 25vh !important; /* 稍微往上提，避開操控鍵 */
+				width: 140px !important; /* 強制縮小總寬度 */
 			}
 
-			/* 縮小 Mode HUD 的文字 */
-			#modeHUD {
-				padding: 3px 10px;
-				font-size: 1.4vh;
-				min-width: 80px;
+			.cyber-panel {
+				padding: 5px !important;
+				width: 100% !important;
+				max-width: 130px !important;
 			}
 
-			/* 縮小 Radio HUD 整體寬度 */
-			#radioHUD {
-				width: 45vw; /* 寬度改為螢幕的 65% */
-				max-width: 240px; /* 設定最大上限 */
-				min-height: 50px;
-				padding: 6px;
-			}
+			/* 2. 縮小文字 */
+			#rankingList { font-size: 10px !important; }
+			#lapTimerDisplay { font-size: 14px !important; }
+			.radio-header { font-size: 9px !important; }
+			#radioText { font-size: 11px !important; }
 
-			/* 縮小無線電標題字體 */
-			.radio-header {
-				font-size: 9px;
-				margin-bottom: 3px;
-			}
-
-			/* 縮小駕駛員頭像 */
+			/* 3. 縮小通訊框頭像 */
 			#radioDriverImg {
-				width: 40px;
-				height: 40px;
+				width: 35px !important;
+				height: 35px !important;
 			}
 
-			/* 縮小對話台詞字體 */
-			#radioText {
-				font-size: 12px;
-				line-height: 1.1;
+			#radioHUD {
+				width: 130px !important;
+				min-height: 40px !important;
+			}
+
+			/* 4. 縮小左側地圖與輪胎監測器 (避免重疊按鈕) */
+			#minimapCanvas {
+				top: 210px !important; /* 移到 AI 頭像下方 */
+				left: 5px !important;
+				width: 100px !important; /* 固定寬度，不要太大 */
+			}
+
+			#tireMonitorContainer {
+				top: 330px !important; /* 緊貼在小地圖下方 */
+				bottom: auto !important;
+				left: 5px !important;
+				width: 60px !important;
+				height: 60px !important;
+			}
+
+			/* 5. 縮小控制按鈕 (避免佔據半個螢幕) */
+			#mobileControls button {
+				width: 55px !important;
+				height: 55px !important;
+				font-size: 10px !important;
+			}
+			
+			#boostBtn {
+				width: 80px !important;
+				height: 80px !important;
+				font-size: 12px !important;
 			}
 		}
 
@@ -1060,6 +1080,7 @@
         <canvas id="game" width="1000" height="1600"></canvas>
         <div id="hud"></div>
         <div id="lapHud">LAP 0/5</div>
+		<button id="quitBtn" style="display: none; position: absolute; top: 10px; left: 75%; transform: translateX(-50%); z-index: 100; background: rgba(150, 0, 0, 0.7); color: white; border: 2px solid #fff; padding: 5px 20px; border-radius: 5px; font-family: Orbitron; cursor: pointer;">QUIT</button>		
         <div id="posHud">POS #1/11</div>
         <div id="countdown"></div>
 		<div id="cyberPrompt">Tap Avatar: System Link</div>
