@@ -2002,7 +2002,7 @@ function emitMirageAfterimage(car) {
         x: car.x,
         y: car.y,
         // 注意：車實際畫圖時用 angle + Math.PI/2
-        angle:  car.angle,
+        angle:  car.angle + Math.PI/2,
         length: CARHEIGHT * 1.8,
         width:  CARWIDTH  * 0.8,
         life: life,
