@@ -1100,22 +1100,50 @@ carsToDraw.forEach(car =>  {
 }
  
 function checkCollisions(car1, car2)  {
-  const dx = car2.x - car1.x;
-  const dy = car2.y - car1.y;
-  const dist = Math.hypot(dx, dy);
-  const minDist = (CARWIDTH + CARHEIGHT) / 3;
-  if (dist < minDist)  {
-    const push = (minDist - dist) * 0.4;
-    const nx = dx / (dist || 1);
-    const ny = dy / (dist || 1);
-    car1.x -= nx * push;
-    car1.y -= ny * push;
-    car2.x += nx * push;
-    car2.y += ny * push;
-    car1.forwardSpeed *= 0.9;
-    car2.forwardSpeed *= 0.9;
-	emitCollisionSparks((car1.x + car2.x)/2, (car1.y + car2.y)/2);
-  }
+    const level1 = isCarOnBridge(car1) ? 1 : 0;
+    const level2 = isCarOnBridge(car2) ? 1 : 0;	
+	// If they are on different levels, skip collision!
+    if (level1 !== level2) return;
+	const dx = car2.x - car1.x;
+	const dy = car2.y - car1.y;
+	const dist = Math.hypot(dx, dy);
+	const minDist = (CARWIDTH + CARHEIGHT) / 3;
+	
+	if (dist < minDist)  {
+		const push = (minDist - dist) * 0.4;
+		const nx = dx / (dist || 1);
+		const ny = dy / (dist || 1);
+		car1.x -= nx * push;
+		car1.y -= ny * push;
+		car2.x += nx * push;
+		car2.y += ny * push;
+		car1.forwardSpeed *= 0.9;
+		car2.forwardSpeed *= 0.9;
+		emitCollisionSparks((car1.x + car2.x)/2, (car1.y + car2.y)/2);
+	}
+}
+
+function isCarOnBridge(car) {
+    const t = TRACKS[currentTrack];
+    if (!t.name.includes("Suzuka")) return false;
+    // 第二次經過交叉點：WP 51 到 56
+    return (car.waypointIndex >= 51 && car.waypointIndex <= 56);
+}
+
+function isCarInTunnel(car) {
+    const t = TRACKS[currentTrack];
+    if (!t.name.includes("Suzuka")) return false;
+    
+    // 橋的物理中心點
+    const bridgeX = 2886 * SCALE; 
+    const bridgeY = 4070 * SCALE;
+    
+    // 計算車子距離橋中心的直線距離
+    const distToBridgeCenter = Math.hypot(car.x - bridgeX, car.y - bridgeY);
+    
+    // 只有在路段 32-36 之間（地底層），且物理距離中心小於 450 單位時才變暗
+    // 450 這個數字你可以根據橋的寬度微調，數字愈小隧道愈短
+    return (car.waypointIndex >= 32 && car.waypointIndex <= 36) && (distToBridgeCenter < 450);
 }
 
 function followWaypoints(car) {
@@ -1550,7 +1578,7 @@ allCars = [];
 const t = TRACKS[currentTrack];
 const GRID_SPACING = 200;
 const ROW_SPACING = 120;
-if (mode === 'championship')  {
+if (mode === 'championship'|| mode === 'single')  {
 	lap = 1; // 從第一圈開始
     currentLapStartTime = Date.now(); // 重置計時
     raceFinished = false;
@@ -1828,8 +1856,6 @@ function showModeChange(newMode) {
 // 移除全域 aeroModeActive，改用每個車的屬性
 function updateAeroMode(car, isPlayer) {
     if (!car || !car.spec) return;
-
-    // --- 關鍵修正：如果車子本身沒有 AERO 功能 ---
     if (car.spec.hasAero === false) {
         car.isAeroMode = false;
         if (isPlayer) currentMode = 'CIRCUIT';
@@ -1838,19 +1864,25 @@ function updateAeroMode(car, isPlayer) {
 
     const currentSpeed = car.forwardSpeed || 0;
     const maxS = car.maxSpeedLimit || 26.7;
-    const ratio = isPlayer ? 0.90 : 0.90;
-    const speedThreshold = maxS * ratio;
-
+    
+    // 緩衝邏輯：進入 AERO 需要 90% 速度，離開只需 85%，防止抖動
+    const enterThreshold = maxS * 0.90;
+    const exitThreshold = maxS * 0.85;
+    
     let isTurning = isPlayer ? (keys['ArrowLeft'] || keys['ArrowRight']) : (Math.abs(car.lastAISteering) > 0.15);
 
     const prevAero = car.isAeroMode;
-    // 只有速度夠快、沒在大轉彎、沒在甩尾時才變形
-    car.isAeroMode = (currentSpeed > speedThreshold) && !isTurning && (!isPlayer || !isDriftMode);
+    
+    if (!prevAero) {
+        // 嘗試進入 AERO
+        car.isAeroMode = (currentSpeed > enterThreshold) && !isTurning && (!isPlayer || !isDriftMode);
+    } else {
+        // 嘗試維持 AERO (條件較寬鬆)
+        car.isAeroMode = (currentSpeed > exitThreshold) && !isTurning && (!isPlayer || !isDriftMode);
+    }
 
     if (isPlayer && car.isAeroMode !== prevAero) {
         currentMode = car.isAeroMode ? 'AERO' : 'CIRCUIT';
-        // 變形那一刻震動一下 (0.25秒)
-        if (car.speed > 5) player.transformShake = 15;
     }
 }
 
@@ -1864,7 +1896,7 @@ function switchCarImage(car, isCurrentlyBoosting = false) {
     const isSpecialCar = originalPath.toUpperCase().includes("OGRE");
 
     let targetSuffix = ".png";
-    let currentModeName = "CIRCUIT"; // 用來記錄模式名稱
+    let currentModeName = "CIRCUIT"; 
 
     if (isCurrentlyBoosting && spec.hasBoost) {
         targetSuffix = (isSpecialCar || !spec.hasAero) ? "_Boost.png" : "_ABoost.png";
@@ -1878,20 +1910,17 @@ function switchCarImage(car, isCurrentlyBoosting = false) {
     const targetSrc = basePath + targetSuffix;
 
     if (car.img) {
-        const currentSrc = car.img.src;
-        
-        // --- 修正震動邏輯：改用模式名稱比對 ---
         if (car === player) {
-            if (lastPlayerMode !== currentModeName) {
-                // 模式真的變了，且速度夠快才震動
-                if (player.speed > 5) {
-                    player.transformShake = 15; 
+            // 只有當「真正進入比賽」後，且模式發生切換時才震動
+            if (gameState === 'racing' && lastPlayerMode !== "" && lastPlayerMode !== currentModeName) {
+                if (player.speed > 10) {
+                    player.transformShake = 12; // 給予固定 12 幀的震動
                 }
-                lastPlayerMode = currentModeName;
             }
+            lastPlayerMode = currentModeName; // 更新紀錄
         }
 
-        // 只有圖片不同才更換
+        const currentSrc = car.img.src;
         if (!currentSrc.endsWith(targetSrc)) {
             let tempImg = new Image();
             tempImg.src = targetSrc;
@@ -2276,333 +2305,258 @@ function updateRaceRanking() {
     }
 }
 
-function loop()  {
-  if (gameState === 'paused' || raceFinished)  {
-    return;
-  }
-  // 背景
-  if (sandPattern)  {
-    ctx.fillStyle = sandPattern;
-    ctx.fillRect(0, 0, W, H);
-  } else  {
-    ctx.fillStyle = '#C2B280';
-    ctx.fillRect(0, 0, W, H);
-  }
+function loop() {
+    if (gameState === 'paused' || raceFinished) return;
 
-if (!player) {
-    requestAnimationFrame(loop);
-    return;
-}
+    // 1. 基礎背景
+    if (sandPattern) { ctx.fillStyle = sandPattern; ctx.fillRect(0, 0, W, H); } 
+    else { ctx.fillStyle = '#C2B280'; ctx.fillRect(0, 0, W, H); }
 
-// === Camera transform 開始 ===
+    if (!player) { requestAnimationFrame(loop); return; }
 
-// === 1. 鏡頭邏輯 (加入賽前滑動) ===
-let camX = player.x;
-let camY = player.y;
+    const trackData = TRACKS[currentTrack];
+    const deltaTime = 1/60;
 
-if (gameState === 'countdown') {
-    const elapsed = Date.now() - countdownStartTime;
-    const duration = 6000; // 倒數總時長
-    const progress = Math.min(1, elapsed / duration);
+    // === 2. 鏡頭位置計算 (賽前滑動) ===
+    let camX = player.x, camY = player.y;
+    if (gameState === 'countdown') {
+        const elapsed = Date.now() - countdownStartTime;
+        const progress = Math.min(1, elapsed / 6000);
+        const startCamX = trackData.start.x * SCALE;
+        const startCamY = trackData.start.y * SCALE - 1500;
+        const ease = 1 - Math.pow(1 - progress, 3);
+        camX = startCamX + (player.x - startCamX) * ease;
+        camY = startCamY + (player.y - startCamY) * ease;
+    }
 
-    // 設定鏡頭起始點：起點線前方 1500 單位
-    const startLineY = TRACKS[currentTrack].start.y * SCALE;
-    const startLineX = TRACKS[currentTrack].start.x * SCALE;
-    const startCamX = startLineX;
-    const startCamY = startLineY - 1500;
-
-    // 平滑插值 (Smooth Easing)
-    const ease = 1 - Math.pow(1 - progress, 3); // Out-Cubic 效果
-    camX = startCamX + (player.x - startCamX) * ease;
-    camY = startCamY + (player.y - startCamY) * ease;
-}
-
-ctx.save();
-
-// 將畫面中心移去 (W/2, H/2)
-ctx.translate(W / 2, H / 2);
-
-// 縮放世界（假設你上面已經有 const CAMERA_ZOOM = 0.6 之類）
-ctx.scale(CAMERA_ZOOM, CAMERA_ZOOM);
-
-// 將玩家車拉到畫面中心
-ctx.translate(-camX, -camY);
-
-// 之後全部用「世界座標」直畫
-ctx.drawImage(
-    trackImg,
-    0,
-    0,
-    TRACKS[currentTrack].originalWidth * SCALE,
-    TRACKS[currentTrack].originalHeight * SCALE
-);
-
-// 這兩個 helper 要改簽名，只用世界座標（下面第 4 點有解）
-drawCurrentTrackRoad(ctx);
-drawStartGrid(ctx, TRACKS[currentTrack], SCALE);
-const trackData = TRACKS[currentTrack];
-// 1. Draw the Full Screen Overlays first
-drawCyberOverlay(ctx);
-// ==========================================
-// NEW PIT & GRANDSTAND DRAWING (Inside Camera)
-// ==========================================
-const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
-const RENDER_PARKING_INDEX = PIT_WAYPOINTS_COUNT >= 3 ? PIT_WAYPOINTS_COUNT - 3 : -1;
-
-if (trackData.pitWaypoints && trackData.pitWaypoints.length > 1) {
+    // ========================================================
+    // === 3. 世界座標繪製開始 (相機內) ===
+    // ========================================================
     ctx.save();
-    
-    // 1. Draw Pit Road (Simple Gray)
-    ctx.beginPath();
-    ctx.lineWidth = 40 * SCALE;
-    ctx.strokeStyle = "#555555"; // Dark asphalt
-    ctx.lineJoin = "round";
-    ctx.moveTo(trackData.pitWaypoints[0].x * SCALE, trackData.pitWaypoints[0].y * SCALE);
-    for(let i=1; i<trackData.pitWaypoints.length; i++) {
-        ctx.lineTo(trackData.pitWaypoints[i].x * SCALE, trackData.pitWaypoints[i].y * SCALE);
-    }
-    ctx.stroke();
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(CAMERA_ZOOM, CAMERA_ZOOM);
+    ctx.translate(-camX, -camY);
 
-    // 2. Draw Team Garages (The Paddock)
-    if (RENDER_PARKING_INDEX >= 0) {
-        const wp = trackData.pitWaypoints[RENDER_PARKING_INDEX];
-        const bx = wp.x * SCALE;
-        const by = wp.y * SCALE;
-        
-        const boxW = CARWIDTH * 1.5; 
-        const boxH = CARHEIGHT * 1.2;
-        const gap = boxH * 1.1;
+    // --- [第 1 層：地圖最底層] ---
+    ctx.drawImage(trackImg, 0, 0, trackData.originalWidth * SCALE, trackData.originalHeight * SCALE);
+    drawCurrentTrackRoad(ctx);
+    drawStartGrid(ctx, trackData, SCALE);
 
-        // Logic to find Player's team
-        const playerTeam = player.spec.image.toUpperCase();
-        let currentTeamKey = "OTHERS";
-        if (playerTeam.includes("SUGO")) currentTeamKey = "SUGO";
-        else if (playerTeam.includes("AOI")) currentTeamKey = "AOI";
-        else if (playerTeam.includes("UNION")) currentTeamKey = "UNION";
-        else if (playerTeam.includes("STORMZENDER")) currentTeamKey = "STORMZENDER";
-        else if (playerTeam.includes("MISSING")) currentTeamKey = "MISSING";
-
-        for (let i = 0; i < 6; i++) {
-            const currentY = by + (i * gap);
-            const currentX = bx + 150; // Garage offset from road
-
-            // Garage floor
-            ctx.fillStyle = (i === 0) ? "rgba(0, 255, 255, 0.1)" : "#222";
-            ctx.fillRect(currentX, currentY - boxH/2, boxW, boxH);
-            
-            // Neon Border for Player box
-            ctx.strokeStyle = (i === 0) ? "#00ffff" : "#555";
-            ctx.lineWidth = 4;
-            ctx.strokeRect(currentX, currentY - boxH/2, boxW, boxH);
-
-            // Draw Team Logo / Banner
-            const logo = (i === 0) ? teamLogos[currentTeamKey] : null; 
-            if (logo && logo.complete) {
-                ctx.drawImage(logo, currentX + (boxW/2 - 40), currentY - 40, 80, 80);
-            }
-
-            // Box Label
-            ctx.fillStyle = (i === 0) ? "#00ffff" : "#aaa";
-            ctx.font = "bold 20px Rajdhani";
-            ctx.fillText(i === 0 ? "PIT BOX" : "TEAM " + i, currentX + 10, currentY - boxH/2 + 25);
-        }
-    }
-    ctx.restore();
-}
-
-// 3. Draw Grandstands (Crowd)
-if (grandstandImg.complete) {
-    const startY = trackData.start.y * SCALE - 1000;
-    const startX = trackData.start.x * SCALE - 700;
-    for(let i = 0; i < 4; i++) {
-        ctx.drawImage(grandstandImg, startX, startY + (i * grandstandImg.height * 0.45));
-    }
-}
-
-// ★ boostParticles（世界層）
-ctx.save();
-boostParticles.forEach(p => {
-    const alpha = p.life / p.maxLife;
-
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(p.angle);
-
-    if (p.type === 'mirage') {
-        const a2 = p.life / p.maxLife;
-        ctx.globalAlpha = a2 * 0.5;
-
-        if (p.img && p.img.complete) {
-            ctx.rotate(Math.PI / 2);
-            const scale = 0.95;
-            const drawW = CARWIDTH * scale;
-            const drawH = CARHEIGHT * scale;
-            ctx.drawImage(p.img, -drawW / 2, -drawH / 2, drawW, drawH);
-        } else {
-            ctx.fillStyle = 'rgba(200, 255, 255, 0.8)';
-            ctx.fillRect(-p.length, -p.width / 2, p.length, p.width);
-        }
-    } else {
-        const len = p.length;
-        const w = p.width;
-
-        ctx.globalAlpha = alpha;
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = w;
+    // --- [第 2 層：維修區路面與車庫 (必須在賽車之前畫)] ---
+    if (trackData.pitWaypoints && trackData.pitWaypoints.length > 1) {
+		const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
+		const RENDER_PARKING_INDEX = PIT_WAYPOINTS_COUNT >= 3 ? PIT_WAYPOINTS_COUNT - 3 : -1;
+        // 畫 Pit 路面
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-len, 0);
+        ctx.lineWidth = 40 * SCALE;
+        ctx.strokeStyle = "#555555"; 
+        ctx.lineJoin = "round";
+        ctx.moveTo(trackData.pitWaypoints[0].x * SCALE, trackData.pitWaypoints[0].y * SCALE);
+        for(let i=1; i<trackData.pitWaypoints.length; i++) {
+            ctx.lineTo(trackData.pitWaypoints[i].x * SCALE, trackData.pitWaypoints[i].y * SCALE);
+        }
         ctx.stroke();
-    }
 
-    ctx.restore();
-});
-ctx.restore();
+        // 畫車庫與 Logo (中層繪製)
+        if (RENDER_PARKING_INDEX >= 0) {
+            const wp = trackData.pitWaypoints[RENDER_PARKING_INDEX];
+            const bx = wp.x * SCALE, by = wp.y * SCALE;
+            const boxW = CARWIDTH * 1.5, boxH = CARHEIGHT * 1.2, gap = boxH * 1.1;
+            const playerTeam = player.spec.image.toUpperCase();
+            let currentTeamKey = "OTHERS";
+            if (playerTeam.includes("SUGO")) currentTeamKey = "SUGO";
+            else if (playerTeam.includes("AOI")) currentTeamKey = "AOI";
+            else if (playerTeam.includes("UNION")) currentTeamKey = "UNION";
+            else if (playerTeam.includes("STORMZENDER")) currentTeamKey = "STORMZENDER";
+            else if (playerTeam.includes("MISSING")) currentTeamKey = "MISSING";
 
-ctx.save();
-tireMarks.forEach(mark => {
-    const alpha = Math.min(1, mark.life / 60);
-    const size = 10;
-    ctx.strokeStyle = `rgba(0, 0, 0, ${0.8 * alpha})`;
-    ctx.lineWidth = size;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(mark.x1, mark.y1);   // 世界座標
-    ctx.lineTo(mark.x2, mark.y2);   // 世界座標
-    ctx.stroke();
-});
-ctx.restore();
-
-ctx.save();
-dustParticles.forEach(p => {
-    const alpha = p.life / p.maxLife;
-    const size = alpha * 15; // 沙塵會隨時間變大變淡
-    // 修正：使用粒子自定義的 color
-    ctx.fillStyle = p.color || `rgba(180, 180, 180, ${alpha * 0.6})`;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, size * 0.5, 0, Math.PI * 2); 
-    ctx.fill();
-});
-ctx.restore();
-
-allCars.forEach(car => {
-    ctx.save();
-    ctx.translate(car.x, car.y);              // 世界座標
-    ctx.rotate(car.angle + Math.PI / 2);
-    if (car.img && car.img.complete) {
-        ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
-    }
-    ctx.restore();
-	drawCarMiniBubble(ctx, car); 
-});
-
-// 這裡加 player（如果 player 唔喺 allCars 入面）
-ctx.save();
-ctx.translate(player.x, player.y);
-ctx.rotate(player.angle + Math.PI / 2);
-// --- 加入閃爍判斷 ---
-if (player.isInvincible > 0) {
-    player.isInvincible--;
-    // 每 5 幀切換一次透明度，產生閃爍感
-    if (Math.floor(Date.now() / 100) % 2 === 0) {
-        ctx.globalAlpha = 0.3;
-    }
-}
-// ------------------
-if (player.img && player.img.complete) {
-    ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
-}
-ctx.restore();
-
-// --- 繪製玩家賽車 ---
-ctx.save();
-
-// [新增：變形震動效果]
-let shakeX = 0, shakeY = 0;
-if (player.transformShake > 0) {
-    player.transformShake--;
-    shakeX = (Math.random() - 0.5) * 10;
-    shakeY = (Math.random() - 0.5) * 10;
-}
-
-ctx.translate(player.x + shakeX, player.y + shakeY);
-ctx.rotate(player.angle + Math.PI / 2);
-
-// [原本的閃爍與繪圖邏輯...]
-if (player.isInvincible > 0) {
-    player.isInvincible--;
-    if (Math.floor(Date.now() / 100) % 2 === 0) ctx.globalAlpha = 0.3;
-}
-
-if (player.img && player.img.complete) {
-    ctx.drawImage(player.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
-}
-ctx.restore();
-
-// ====== [ Slipstream 視覺優化 ] ======
-if (player.isDrafting) {
-    ctx.save();
-    // 使用極淡的青白色氣流
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.12)"; 
-    ctx.lineWidth = 1;
-    // 讓虛線動得更快，更有速度感
-    ctx.setLineDash([40, 30]);
-    ctx.lineDashOffset = -Date.now() / 3; 
-
-    const sideOffsets = [-40, -20, 20, 40]; // 四條氣流線
-    for (let offset of sideOffsets) {
-        ctx.beginPath();
-        const startX = player.x + Math.cos(player.angle + Math.PI/2) * offset;
-        const startY = player.y + Math.sin(player.angle + Math.PI/2) * offset;
-        ctx.moveTo(startX, startY);
-        // 向前延伸的距離縮短一點，避免穿過前車
-        ctx.lineTo(startX + Math.cos(player.angle) * 300, startY + Math.sin(player.angle) * 300);
-        ctx.stroke();
-    }
-
-    // 2. 畫出科技感鎖定框 (在被吸的那架 AI 車身上)
-    allCars.forEach(car => {
-        const dx = car.x - player.x;
-        const dy = car.y - player.y;
-        const dist = Math.hypot(dx, dy);
-        
-        // 找出正在被玩家「補吸」的那架車
-        if (dist < 1000 && dist > 100) {
-            const angleToOther = Math.atan2(dy, dx);
-            const angleDiff = Math.abs(Math.atan2(Math.sin(angleToOther - player.angle), Math.cos(angleToOther - player.angle)));
-            
-            if (angleDiff < 0.3) {
-                // 在 AI 車身上畫一個青色瞄準框
-                ctx.strokeStyle = "#00ffff";
-                ctx.lineWidth = 2;
-                ctx.setLineDash([]); // 實線
-                const s = 80; // 框的大小
-                
-                ctx.save();
-                ctx.translate(car.x, car.y);
-                // 畫四個角落的 L 型
-                const len = 20;
-                for(let r=0; r<4; r++) {
-                    ctx.rotate(Math.PI/2);
-                    ctx.beginPath();
-                    ctx.moveTo(s/2 - len, s/2);
-                    ctx.lineTo(s/2, s/2);
-                    ctx.lineTo(s/2, s/2 - len);
-                    ctx.stroke();
-                }
-                
-                // 顯示距離文字
-                ctx.fillStyle = "#00ffff";
-                ctx.font = "bold 12px Rajdhani";
-                ctx.fillText(`SLIPSTREAM: ${Math.round(dist/10)}m`, s/2 + 5, -s/2);
-                ctx.restore();
+            for (let i = 0; i < 6; i++) {
+                const currentY = by + (i * gap);
+                const currentX = bx + 150;
+                ctx.fillStyle = (i === 0) ? "rgba(0, 255, 255, 0.1)" : "#222";
+                ctx.fillRect(currentX, currentY - boxH/2, boxW, boxH);
+                ctx.strokeStyle = (i === 0) ? "#00ffff" : "#555";
+                ctx.lineWidth = 4;
+                ctx.strokeRect(currentX, currentY - boxH/2, boxW, boxH);
+                const logo = (i === 0) ? teamLogos[currentTeamKey] : null; 
+                if (logo && logo.complete) ctx.drawImage(logo, currentX + (boxW/2 - 40), currentY - 40, 80, 80);
+                ctx.fillStyle = (i === 0) ? "#00ffff" : "#aaa";
+                ctx.font = "bold 20px Rajdhani";
+                ctx.fillText(i === 0 ? "PIT BOX" : "TEAM " + i, currentX + 10, currentY - boxH/2 + 25);
             }
         }
+    }
+
+    // --- [第 3 層：裝飾與環境 (看台)] ---
+    if (grandstandImg.complete) {
+        const startY = trackData.start.y * SCALE - 1000;
+        const startX = trackData.start.x * SCALE - 700;
+        for(let i = 0; i < 4; i++) ctx.drawImage(grandstandImg, startX, startY + (i * grandstandImg.height * 0.45));
+    }
+
+    // --- [第 4 層：地面粒子 (胎痕、沙塵)] ---
+    tireMarks = tireMarks.filter(mark => { mark.life--; return mark.life > 0; });
+    tireMarks.forEach(mark => {
+        ctx.strokeStyle = `rgba(0, 0, 0, ${mark.life / 60 * 0.8})`;
+        ctx.lineWidth = 10; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(mark.x1, mark.y1); ctx.lineTo(mark.x2, mark.y2); ctx.stroke();
     });
-    ctx.restore();
-}
 
-drawCarMiniBubble(ctx, player);
+    dustParticles = dustParticles.filter(p => { p.x += p.vx; p.y += p.vy; p.life--; return p.life > 0; });
+    dustParticles.forEach(p => {
+        const alpha = p.life / p.maxLife;
+        ctx.fillStyle = p.color || `rgba(180, 180, 180, ${alpha * 0.6})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, alpha * 7.5, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // --- [第 5 層：地面組賽車 (包含在隧道裡的車)] ---
+    const allRacingUnits = [...allCars, player]; 
+    const groundUnits = allRacingUnits.filter(u => !isCarOnBridge(u));
+    const bridgeUnits = allRacingUnits.filter(u => isCarOnBridge(u));
+
+    groundUnits.forEach(car => {
+        ctx.save();
+        let shakeX = 0, shakeY = 0;
+        if (car === player && player.transformShake > 0) {
+            shakeX = (Math.random() - 0.5) * 8; shakeY = (Math.random() - 0.5) * 8;
+        }
+        ctx.translate(car.x + shakeX, car.y + shakeY);
+        ctx.rotate(car.angle + Math.PI / 2);
+        
+        if (car === player && player.isInvincible > 0) {
+            if (Math.floor(Date.now() / 100) % 2 === 0) ctx.globalAlpha = 0.3;
+        }
+
+        if (isCarInTunnel(car)) {
+            ctx.globalAlpha = 0.2; // 進入隧道變暗變透明
+            ctx.filter = "brightness(5%)"; 
+        }
+
+        if (car.img && car.img.complete) ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+        ctx.restore();
+        drawCarMiniBubble(ctx, car); 
+    });
+
+    // --- [第 6 層：橋樑建築 (遮蓋隧道車)] ---
+    if (trackData.name.includes("Suzuka")) {
+        const centerX = 2886 * SCALE; 
+        const centerY = 4070 * SCALE;
+        const bridgeAngle = Math.atan2(3861 - 4151, 2704 - 2955); 
+        const bW = 850, bH = 680;
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(bridgeAngle);
+        ctx.shadowBlur = 30; ctx.shadowColor = "rgba(0,0,0,0.8)";
+        ctx.shadowOffsetX = 15; ctx.shadowOffsetY = 15;
+        ctx.fillStyle = "#2a2a2a";
+        ctx.fillRect(-bW/2, -bH/2, bW, bH);
+        ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+        ctx.fillStyle = "#444444";
+        ctx.fillRect(-bW/2, -bH/2, bW, 25);
+        ctx.fillRect(-bW/2, bH/2 - 25, bW, 25);
+        ctx.restore();
+    }
+
+    // --- [第 7 層：橋上組賽車 (蓋在橋樑上方)] ---
+    bridgeUnits.forEach(car => {
+        ctx.save();
+        ctx.translate(car.x, car.y);
+        ctx.rotate(car.angle + Math.PI / 2);
+        ctx.shadowBlur = 10; ctx.shadowColor = "rgba(0,0,0,0.6)";
+        ctx.shadowOffsetX = 5; ctx.shadowOffsetY = 5;
+        if (car.img && car.img.complete) ctx.drawImage(car.img, -CARWIDTH / 2, -CARHEIGHT / 2, CARWIDTH, CARHEIGHT);
+        ctx.restore();
+        drawCarMiniBubble(ctx, car);
+    });
+
+    // --- [第 8 層：特效 (Boost 火焰、Slipstream、掃描框)] ---
+    // 更新 Boost 粒子 (放在最上層)
+    boostParticles = boostParticles.filter(p => { p.x += p.vx; p.y += p.vy; p.life--; return p.life > 0; });
+    boostParticles.forEach(p => {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+        if (p.type === 'mirage') { ctx.globalAlpha = p.life / p.maxLife * 0.5; if (p.img) ctx.drawImage(p.img, -60, -75, 120, 150); }
+        else { ctx.strokeStyle = p.color; ctx.lineWidth = p.width; ctx.globalAlpha = p.life / p.maxLife; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-p.length, 0); ctx.stroke(); }
+        ctx.restore();
+    });
+
+    // Slipstream 特效與瞄準框
+    if (player.isDrafting) {
+        ctx.save();
+        
+        // 1. 畫出極淡的氣流線 (背景絲)
+        ctx.strokeStyle = "rgba(0, 255, 255, 0.08)"; 
+        ctx.lineWidth = 1;
+        ctx.setLineDash([40, 40]);
+        ctx.lineDashOffset = -Date.now() / 3; 
+        const sideOffsets = [-45, -25, 25, 45];
+        for (let offset of sideOffsets) {
+            ctx.beginPath();
+            const startX = player.x + Math.cos(player.angle + Math.PI/2) * offset;
+            const startY = player.y + Math.sin(player.angle + Math.PI/2) * offset;
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(startX + Math.cos(player.angle) * 350, startY + Math.sin(player.angle) * 350);
+            ctx.stroke();
+        }
+
+        // 2. 找回科技感鎖定框 (Targeting Box)
+        allCars.forEach(car => {
+            const dx = car.x - player.x;
+            const dy = car.y - player.y;
+            const dist = Math.hypot(dx, dy);
+            
+            // 判定這架車是否為目前玩家正在補吸的對象
+            if (dist < 1100 && dist > 100) {
+                const angleToOther = Math.atan2(dy, dx);
+                const angleDiff = Math.abs(Math.atan2(Math.sin(angleToOther - player.angle), Math.cos(angleToOther - player.angle)));
+                
+                if (angleDiff < 0.3) {
+					
+					    player.isDrafting = true;
+						player.forwardSpeed += 0.08;
+						
+						// 如果進入補吸狀態，且氣泡沒在顯示，有機率彈出頭像
+						if (!player.bubbleActive && Math.random() < 0.01) {
+							player.bubbleActive = 90; // 彈出頭像 1.5 秒
+						}
+					
+                    // --- 繪製瞄準框 ---
+                    ctx.save();
+                    ctx.setLineDash([]); // 鎖定框用實線
+                    ctx.strokeStyle = "#00ffff";
+                    ctx.lineWidth = 2;
+                    ctx.translate(car.x, car.y);
+                    
+                    const s = 90; // 框的大小
+                    const len = 20; // L 型的長度
+                    
+                    // 畫四個角落的科技感 L 型
+                    for(let r = 0; r < 4; r++) {
+                        ctx.beginPath();
+                        ctx.moveTo(s/2 - len, s/2);
+                        ctx.lineTo(s/2, s/2);
+                        ctx.lineTo(s/2, s/2 - len);
+                        ctx.stroke();
+                        ctx.rotate(Math.PI / 2);
+                    }
+                    
+                    // 顯示掃描文字
+                    ctx.fillStyle = "#00ffff";
+                    ctx.font = "bold 12px Rajdhani";
+                    ctx.shadowBlur = 5;
+                    ctx.shadowColor = "#00ffff";
+                    ctx.fillText(`LOCK: ${Math.round(dist/10)}m`, s/2 + 10, -s/2);
+                    
+                    ctx.restore();
+                }
+            }
+        });
+		
+		ctx.restore();}
+	
+	ctx.restore(); 
+    // ========================================================
+    // === 3. 世界座標繪製結束 (ctx.restore 完畢) ===
+    // ========================================================
 
 // --- 1. UI 顯示狀態全時監控 (放在 loop 裡面，ctx.restore() 之後) ---
 // --- 找到 loop() 內處理 rightUI.style.display 的位置並替換 ---
@@ -3170,6 +3124,13 @@ if (!playerAutoDriving)  {
   }
 }
 
+    const pWps = trackData.waypoints;
+    const pTarget = pWps[player.waypointIndex];
+    const pDist = Math.hypot(pTarget.x * SCALE - player.x, pTarget.y * SCALE - player.y);
+    if (pDist < 1000) {
+        player.waypointIndex = (player.waypointIndex + 1) % pWps.length;
+    }
+
 if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
 if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
 
@@ -3599,37 +3560,45 @@ if (lap > totalLaps) {
     raceFinished = true;
     gameState = 'finished';
     
-    // 獲取最後排名
+    // 1. 獲取最後排名 (統一使用 finalPlayerPos)
     const finalRankings = calculateCurrentRankings();
     const finalPlayerPos = finalRankings.findIndex(r => r.isPlayer) + 1;
     
     document.getElementById('finishScreen').style.display = 'flex';
     document.getElementById('finalPos').textContent = `FINAL POS #${finalPlayerPos}`;
 
-    // 锦标赛逻辑
+    const menuBtn = document.getElementById('backToMenuBtn');
+
+    // 2. 根據模式決定按鈕功能
     if (mode === 'championship') {
         if (currentTrack < TRACKS.length - 1) {
-            // 還有下一關
-            document.getElementById('finalPos').textContent = `FINISHED #${finalPos}! READY FOR NEXT TRACK?`;
-            const nextBtn = document.getElementById('backToMenuBtn');
-            nextBtn.textContent = "NEXT RACE";
-            nextBtn.onclick = () => {
+            // 錦標賽：還有下一關
+            document.getElementById('finalPos').textContent = `FINISHED #${finalPlayerPos}! READY FOR NEXT TRACK?`;
+            menuBtn.textContent = "NEXT RACE";
+            menuBtn.onclick = () => {
                 currentTrack++; // 進入下一關
                 loadTrack(currentTrack);
                 document.getElementById('finishScreen').style.display = 'none';
                 startRace();
             };
         } else {
-            // 全部跑完
-            document.getElementById('finalPos').textContent = `SERIES COMPLETE! FINAL POS #${finalPos}`;
-            document.getElementById('backToMenuBtn').textContent = "BACK TO MENU";
-            // 恢復原本的按鈕功能
-            setupOriginalMenuButton();
+            // 錦標賽：最後一關跑完
+            document.getElementById('finalPos').textContent = `SERIES COMPLETE! FINAL POS #${finalPlayerPos}`;
+            menuBtn.textContent = "BACK TO MENU";
+            menuBtn.onclick = () => location.reload(); // 回主選單
         }
-    } else {
-        // Free Run 模式維持現狀
-        document.getElementById('finalPos').textContent = `FINAL POS #${finalPos}`;
-        document.getElementById('finishScreen').style.display = 'flex';
+    } 
+    else if (mode === 'single') {
+        // 單場比賽：跑完直接回選單
+        document.getElementById('finalPos').textContent = `FINAL POS #${finalPlayerPos}`;
+        menuBtn.textContent = "BACK TO MENU";
+        menuBtn.onclick = () => location.reload();
+    }
+    else {
+        // Free Run 或其他
+        document.getElementById('finalPos').textContent = `FREE RUN COMPLETE`;
+        menuBtn.textContent = "BACK TO MENU";
+        menuBtn.onclick = () => location.reload();
     }
 }
 }
@@ -3696,6 +3665,7 @@ if (gameState === 'racing') {
 	const carNameLower = rawName.toLowerCase();
 
 	updateAIAvatarByCarName(carNameLower);
+	if (player.transformShake > 0) player.transformShake--;
 
     // 1. Define the Prefix first so it is never "undefined"
     let aiPrefix = `▶ ${currentAIName || "SYSTEM"}: `; 
@@ -3887,6 +3857,19 @@ if (gameState !== 'title')  {
     
     // Apply Cyber System Logic
     updateCyberSystemLogic();
+
+        // ====== [ 新增：玩家路點進度追蹤 ] ======
+        const pWps = trackData.waypoints;
+        const pTarget = pWps[player.waypointIndex];
+        const pDist = Math.hypot(pTarget.x * SCALE - player.x, pTarget.y * SCALE - player.y);
+        
+        // 如果距離當前路點小於 800 單位，就前往下一個路點
+        // 玩家的判定範圍要比 AI 大（AI 是 500），因為玩家開車不會完美對準中心線
+        if (pDist < 800) {
+            player.waypointIndex = (player.waypointIndex + 1) % pWps.length;
+        }
+        // ======================================
+
 	
         // ====== [新增：空氣補吸 Slipstream 邏輯] ======
         player.isDrafting = false; // 每一幀重置狀態
@@ -4003,6 +3986,12 @@ document.getElementById('champBtn').onclick = () => {
     document.getElementById('carMenu').classList.add('active');
     buildCarList();
 };
+
+document.getElementById('singleBtn').onclick = () => {
+    mode = 'single';
+    openTrackSelect('single'); // 去選賽道
+};
+
 document.getElementById('timeBtn').onclick = () => openTrackSelect('timeattack');
 document.getElementById('confirmTrackBtn').onclick = () =>  {
   document.getElementById('trackSelect').classList.remove('active');
