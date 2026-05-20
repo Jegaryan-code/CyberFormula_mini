@@ -32,12 +32,6 @@
 			align-items: center;
 			z-index: 999;
 		}
-		@keyframes gradientBG {
-			0% { background-position: 0% 50%; }
-			50% { background-position: 100% 50%; }
-			100% { background-position: 0% 50%; }
-		}
-
 		/* 2. 新增 Logo 圖片樣式 (手機適用) */
 		#titleLogo {
 			/* 確保在大螢幕上不會超過原始尺寸太多 */
@@ -295,8 +289,6 @@
 			border-color: #ff00ff !important;
 			box-shadow: 0 0 15px rgba(255, 0, 255, 0.5) !important;
 		}
-		.boosting-text { color: #ff00ff !important; }
-
 		#dashboardCanvas {
 			width: 35vw;
 			max-width: 280px;
@@ -872,12 +864,11 @@
 
        
 		#mobileControls {
-		  display: none; 
+		  display: none;
 		  position: fixed;
 		  bottom: 3vh;
 		  left: 0;
 		  width: 100%;
-		  display: flex;
 		  justify-content: space-between;
 		  padding: 0 4vw;
 		  z-index: 200;
@@ -961,6 +952,469 @@
 		}
 
 		@keyframes blink { 50% { opacity: 0.3; } }
+		
+		/* =========================================================
+		   PLAY SCREEN SET OVERRIDE
+		   body.screen-mobile = 直向 / 手機 UI
+		   body.screen-web    = 橫向 / 電腦 UI
+		   放喺 style 最尾，用來覆蓋上面舊 media query
+		========================================================= */
+
+		/* ---------- Title Screen Setting UI ---------- */
+		#screenModeSet {
+		  margin: 1vh 0 2vh;
+		  padding: 12px 18px;
+		  background: rgba(0, 20, 50, 0.45);
+		  border: 2px solid rgba(0, 255, 255, 0.65);
+		  border-radius: 14px;
+		  box-shadow: 0 0 18px rgba(0, 255, 255, 0.25);
+		  text-align: center;
+		}
+
+		.setting-title {
+		  font-family: Orbitron, sans-serif;
+		  font-size: clamp(12px, 2.6vw, 18px);
+		  color: #00ffff;
+		  letter-spacing: 0.12em;
+		  margin-bottom: 10px;
+		}
+
+		.screen-mode-buttons {
+		  display: flex;
+		  gap: 10px;
+		  justify-content: center;
+		}
+
+		.screenModeBtn {
+		  min-width: 110px;
+		  padding: 10px 16px;
+		  border: 2px solid rgba(255,255,255,0.5);
+		  border-radius: 999px;
+		  background: rgba(0,0,0,0.55);
+		  color: #fff;
+		  font-family: Rajdhani, sans-serif;
+		  font-size: clamp(14px, 3vw, 20px);
+		  font-weight: 700;
+		  cursor: pointer;
+		}
+
+		.screenModeBtn.active {
+		  background: linear-gradient(45deg, #00ccff, #0066ff);
+		  border-color: #ffffff;
+		  box-shadow: 0 0 16px rgba(0, 204, 255, 0.8);
+		}
+
+		/* ---------- Common gameplay container ---------- */
+		body.screen-mobile #gameContainer,
+		body.screen-web #gameContainer {
+		  width: 100vw !important;
+		  height: 100vh !important;
+		  overflow: hidden !important;
+		}
+
+		/* =========================================================
+		   MOBILE MODE：直向 / 高身 screen
+		========================================================= */
+		body.screen-mobile #mobileControls {
+		  display: none !important;
+		  bottom: 3vh !important;
+		  padding: 0 4vw !important;
+		}
+		
+		/* 只有正式進入比賽畫面先顯示 mobile controls */
+		body.screen-mobile.game-playing #mobileControls {
+		  display: flex !important;
+		}		
+
+		body.screen-mobile #rightUI {
+		  display: flex;
+		  right: 5px !important;
+		  bottom: 25vh !important;
+		  width: 140px !important;
+		  max-width: 140px !important;
+		  gap: 5px !important;
+		  align-items: flex-end !important;
+		}
+
+		/* menu / car select 時隱藏 game HUD */
+		body:not(.game-playing) #rightUI {
+		  display: none !important;
+		}
+
+		/* 入比賽後先出現 */
+		body.game-playing #rightUI {
+		  display: flex !important;
+		}
+
+		body.screen-mobile .cyber-panel {
+		  padding: 5px !important;
+		  width: 100% !important;
+		  max-width: 130px !important;
+		}
+
+		body.screen-mobile #rankingHUD,
+		body.screen-mobile #lapTimerHUD {
+		  width: 130px !important;
+		  max-width: 130px !important;
+		}
+
+		body.screen-mobile #rankingList {
+		  font-size: 10px !important;
+		  line-height: 1.25 !important;
+		}
+
+		body.screen-mobile #lapTimerDisplay {
+		  font-size: 14px !important;
+		}
+
+		body.screen-mobile #radioHUD {
+		  width: 130px !important;
+		  max-width: 130px !important;
+		  min-height: 40px !important;
+		}
+
+		body.screen-mobile .radio-header {
+		  font-size: 9px !important;
+		}
+
+		body.screen-mobile #radioDriverImg {
+		  width: 35px !important;
+		  height: 35px !important;
+		}
+
+		body.screen-mobile #radioText {
+		  font-size: 11px !important;
+		}
+
+		body.screen-mobile #modeHUD {
+		  font-size: 12px !important;
+		  min-width: 100px !important;
+		}
+
+		body.screen-mobile #dashboardCanvas {
+		  width: 130px !important;
+		  max-width: 130px !important;
+		}
+
+		body.screen-mobile #boostBarContainer {
+		  width: 130px !important;
+		  max-width: 130px !important;
+		  height: 10px !important;
+		}
+
+		body.screen-mobile #minimapCanvas {
+		  top: 210px !important;
+		  left: 5px !important;
+		  width: 100px !important;
+		  max-width: 100px !important;
+		}
+
+		body.screen-mobile #tireMonitorContainer {
+		  top: 330px !important;
+		  bottom: auto !important;
+		  left: 5px !important;
+		  width: 60px !important;
+		  height: 60px !important;
+		  min-width: 60px !important;
+		  min-height: 60px !important;
+		}
+
+		body.screen-mobile #cyberPrompt {
+		  left: 5px !important;
+		  top: 180px !important;
+		  font-size: 10px !important;
+		}
+
+		body.screen-mobile #hud {
+		  display: none !important;
+		}
+
+		body.screen-mobile #lapHud {
+		  top: 8px !important;
+		  left: 50% !important;
+		  transform: translateX(-50%) !important;
+		  font-size: 14px !important;
+		  padding: 4px 10px !important;
+		}
+
+		body.screen-mobile #posHud {
+		  top: 8px !important;
+		  right: 5px !important;
+		  font-size: 10px !important;
+		  padding: 4px 8px !important;
+		}
+
+		body.screen-mobile #pitHudPrompt {
+		  top: 12vh !important;
+		  right: 3vw !important;
+		  font-size: 2vh !important;
+		  padding: 5px 10px !important;
+		}
+
+		/* mobile buttons */
+		body.screen-mobile #mobileControls button {
+		  width: 55px !important;
+		  height: 55px !important;
+		  max-width: 55px !important;
+		  max-height: 55px !important;
+		  font-size: 12px !important;
+		}
+
+		body.screen-mobile #boostBtn {
+		  width: 80px !important;
+		  height: 80px !important;
+		  max-width: 80px !important;
+		  max-height: 80px !important;
+		  font-size: 12px !important;
+		}
+
+		/* =========================================================
+		   WEB MODE：橫向 / wide screen
+		========================================================= */
+		body.screen-web #mobileControls {
+		  display: none !important;
+		}
+
+		body.screen-web #rightUI {
+		  right: 1.5vw !important;
+		  bottom: 3vh !important;
+		  width: auto !important;
+		  max-width: none !important;
+		  gap: 1vh !important;
+		  align-items: flex-end !important;
+		}
+
+		body.screen-web .cyber-panel {
+		  padding: 10px !important;
+		  max-width: none !important;
+		}
+
+		body.screen-web #rankingHUD,
+		body.screen-web #lapTimerHUD {
+		  width: 200px !important;
+		  max-width: 200px !important;
+		}
+
+		body.screen-web #rankingList {
+		  font-size: 14px !important;
+		  line-height: 1.4 !important;
+		}
+
+		body.screen-web #lapTimerDisplay {
+		  font-size: 22px !important;
+		}
+
+		body.screen-web #radioHUD {
+		  width: 320px !important;
+		  max-width: 320px !important;
+		  min-height: 80px !important;
+		}
+
+		body.screen-web .radio-header {
+		  font-size: 12px !important;
+		}
+
+		body.screen-web #radioDriverImg {
+		  width: 60px !important;
+		  height: 60px !important;
+		}
+
+		body.screen-web #radioText {
+		  font-size: 16px !important;
+		}
+
+		body.screen-web #modeHUD {
+		  font-size: 1.8vh !important;
+		  min-width: 120px !important;
+		}
+
+		body.screen-web #dashboardCanvas {
+		  width: 35vw !important;
+		  max-width: 280px !important;
+		}
+
+		body.screen-web #boostBarContainer {
+		  width: 35vw !important;
+		  max-width: 250px !important;
+		  height: 12px !important;
+		}
+
+		body.screen-web #minimapCanvas {
+		  left: 10px !important;
+		  top: 330px !important;
+		  width: 25vw !important;
+		  max-width: 200px !important;
+		}
+
+		body.screen-web #tireMonitorContainer {
+		  bottom: 23vh !important;
+		  top: auto !important;
+		  left: 2vw !important;
+		  width: 12vh !important;
+		  height: 12vh !important;
+		  min-width: 60px !important;
+		  min-height: 60px !important;
+		}
+
+		body.screen-web #cyberPrompt {
+		  left: 10px !important;
+		  top: 210px !important;
+		  font-size: 12px !important;
+		}
+
+		body.screen-web #hud {
+		  display: block !important;
+		  left: 10px !important;
+		  top: 10px !important;
+		  font-size: 14px !important;
+		  padding: 8px 15px !important;
+		}
+
+		body.screen-web #lapHud {
+		  top: 10px !important;
+		  left: 50% !important;
+		  transform: translateX(-50%) !important;
+		  font-size: 18px !important;
+		  padding: 8px 15px !important;
+		}
+
+		body.screen-web #posHud {
+		  top: 10px !important;
+		  right: 10px !important;
+		  font-size: 14px !important;
+		  padding: 8px 15px !important;
+		}
+
+		body.screen-web #pitHudPrompt {
+		  top: 12vh !important;
+		  right: 3vw !important;
+		  font-size: 3vh !important;
+		}		
+
+/* =========================================================
+   MOBILE ORIENTATION OVERRIDE
+   只影響 screen-mobile，WEB 不變
+========================================================= */
+
+/* MOBILE 直向 */
+body.screen-mobile.mobile-portrait.game-playing #rightUI {
+  right: 5px !important;
+  bottom: 25vh !important;
+  width: 140px !important;
+  max-width: 140px !important;
+}
+
+body.screen-mobile.mobile-portrait #minimapCanvas {
+  top: 210px !important;
+  left: 5px !important;
+  width: 100px !important;
+  max-width: 100px !important;
+}
+
+body.screen-mobile.mobile-portrait #tireMonitorContainer {
+  top: 330px !important;
+  left: 5px !important;
+  width: 60px !important;
+  height: 60px !important;
+}
+
+/* MOBILE 橫向：縮細所有 gameplay UI */
+body.screen-mobile.mobile-landscape.game-playing #rightUI {
+  right: 4px !important;
+  bottom: 2vh !important;
+  width: 115px !important;
+  max-width: 115px !important;
+  gap: 3px !important;
+  transform: scale(0.82);
+  transform-origin: bottom right;
+}
+
+body.screen-mobile.mobile-landscape #rankingHUD,
+body.screen-mobile.mobile-landscape #lapTimerHUD,
+body.screen-mobile.mobile-landscape #radioHUD {
+  width: 110px !important;
+  max-width: 110px !important;
+}
+
+body.screen-mobile.mobile-landscape #rankingList {
+  font-size: 8px !important;
+  line-height: 1.15 !important;
+}
+
+body.screen-mobile.mobile-landscape #lapTimerDisplay {
+  font-size: 11px !important;
+}
+
+body.screen-mobile.mobile-landscape #dashboardCanvas {
+  width: 105px !important;
+  max-width: 105px !important;
+}
+
+body.screen-mobile.mobile-landscape #boostBarContainer {
+  width: 105px !important;
+  max-width: 105px !important;
+  height: 8px !important;
+}
+
+body.screen-mobile.mobile-landscape #minimapCanvas {
+  top: 58px !important;
+  left: 5px !important;
+  width: 75px !important;
+  max-width: 75px !important;
+}
+
+body.screen-mobile.mobile-landscape #tireMonitorContainer {
+  top: 140px !important;
+  left: 5px !important;
+  width: 45px !important;
+  height: 45px !important;
+  min-width: 45px !important;
+  min-height: 45px !important;
+}
+
+body.screen-mobile.mobile-landscape #hud,
+body.screen-mobile.mobile-landscape #cyberPrompt {
+  display: none !important;
+}
+
+body.screen-mobile.mobile-landscape #lapHud {
+  top: 4px !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+}
+
+body.screen-mobile.mobile-landscape #posHud {
+  top: 4px !important;
+  right: 4px !important;
+  font-size: 9px !important;
+  padding: 3px 6px !important;
+}
+
+body.screen-mobile.mobile-landscape.game-playing #mobileControls {
+  bottom: 1vh !important;
+  padding: 0 2vw !important;
+}
+
+body.screen-mobile.mobile-landscape #mobileControls button {
+  width: 42px !important;
+  height: 42px !important;
+  max-width: 42px !important;
+  max-height: 42px !important;
+  font-size: 9px !important;
+}
+
+body.screen-mobile.mobile-landscape #boostBtn {
+  width: 58px !important;
+  height: 58px !important;
+  max-width: 58px !important;
+  max-height: 58px !important;
+  font-size: 9px !important;
+}
+
+body.screen-mobile.mobile-landscape #moveHorizontal {
+  margin-top: 0 !important;
+  margin-right: 3vw !important;
+}
 
     </style>
 </head>
@@ -970,6 +1424,13 @@
         <h2>MINI RACE</h2>
         <div id="checkered">
             </div>
+		<div id="screenModeSet">
+		  <div class="setting-title">PLAY SCREEN SET</div>
+		  <div class="screen-mode-buttons">
+			<button class="screenModeBtn active" data-screen-mode="mobile">MOBILE</button>
+			<button class="screenModeBtn" data-screen-mode="web">WEB</button>
+		  </div>
+		</div>
         <button id="startTitleBtn">START</button>
     </div>
     
@@ -1173,8 +1634,68 @@
       </div>
     </div>
 
-    <!-- ★ 這個多餘的 countdown 建議刪掉，gameContainer 裡已經有一個 -->
-    <!-- <div id="countdown"></div> -->
+	<script>
+	  (function () {
+		function applyScreenMode(mode) {
+		  if (mode !== 'web' && mode !== 'mobile') {
+			mode = 'mobile';
+		  }
+
+		  document.body.classList.remove('screen-mobile', 'screen-web');
+		  document.body.classList.add(mode === 'web' ? 'screen-web' : 'screen-mobile');
+
+		  document.querySelectorAll('.screenModeBtn').forEach(btn => {
+			btn.classList.toggle('active', btn.dataset.screenMode === mode);
+		  });
+
+		  localStorage.setItem('screenMode', mode);
+		}
+
+		function setGamePlaying(isPlaying) {
+		  document.body.classList.toggle('game-playing', !!isPlaying);
+		}
+
+		function applyOrientationClass() {
+		  const isLandscape = window.matchMedia('(orientation: landscape)').matches;
+		  document.body.classList.toggle('mobile-landscape', isLandscape);
+		  document.body.classList.toggle('mobile-portrait', !isLandscape);
+		}
+
+		document.addEventListener('DOMContentLoaded', () => {
+		  const savedMode = localStorage.getItem('screenMode') || 'mobile';
+		  applyScreenMode(savedMode);
+		  applyOrientationClass();
+		  setGamePlaying(false);
+
+		  document.querySelectorAll('.screenModeBtn').forEach(btn => {
+			btn.addEventListener('click', () => {
+			  applyScreenMode(btn.dataset.screenMode);
+			});
+		  });
+
+		  // FORMULA SELECT 的 GO!，按了才進入 gameplay UI
+		  const confirmBtn = document.getElementById('confirmBtn');
+		  if (confirmBtn) {
+			confirmBtn.addEventListener('click', () => {
+			  setTimeout(() => setGamePlaying(true), 100);
+			});
+		  }
+
+		  // 返回 menu / quit / finish 時關閉 gameplay UI
+		  ['backToMenuBtn', 'quitBtn', 'startTitleBtn', 'champBtn', 'singleBtn', 'timeBtn'].forEach(id => {
+			const el = document.getElementById(id);
+			if (el) {
+			  el.addEventListener('click', () => {
+				setGamePlaying(false);
+			  });
+			}
+		  });
+
+		  window.addEventListener('resize', applyOrientationClass);
+		  window.addEventListener('orientationchange', applyOrientationClass);
+		});
+	  })();
+	</script>
 
     <script src="cars.js"></script>
     <script src="track.js"></script>

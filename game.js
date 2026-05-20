@@ -4,12 +4,12 @@ let playerBestLap = null;
 let currentLapStartTime = 0;
 let formattedCurrentTime = "00:00.00";
 const SCALE = 5.0;
-const CAMERA_ZOOM = 0.6;   // ★ 鏡頭縮放 (1 = 原來大小, 0.8 = 拉遠少少)
+let CAMERA_ZOOM = 0.6;   // ★ 鏡頭縮放 (1 = 原來大小, 0.8 = 拉遠少少)
 const WORLD_SPEED_SCALE = 0.8;
 const SPEED_UNIT_SCALE = 36 / 17;
 const MOVE_SCALE = WORLD_SPEED_SCALE / SPEED_UNIT_SCALE;
-const CARWIDTH = 120;
-const CARHEIGHT = 150;
+let CARWIDTH = 120;
+let CARHEIGHT = 150;
 const grandstandImg = new Image();
 grandstandImg.src = 'track/grandstand.png'; // Make sure the path is correct 
   
@@ -31,6 +31,9 @@ teamLogos["OTHERS"].src = "team/single/Phoenix.webp";
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+
+let raceStartTime = 0;
+let raceStartWaypointIndex = 0;
 
 let cyberSystemActive = false;
 let cyberSystemTimer = 0;
@@ -200,6 +203,32 @@ let activeComm = {
     timer: 0,
     cooldown: 0
 };
+
+function applyPlayScreenTuning() {
+    const screenMode = localStorage.getItem('screenMode') || 'mobile';
+    const isLandscape = window.matchMedia('(orientation: landscape)').matches;
+
+    if (screenMode === 'mobile' && isLandscape) {
+        // 手機橫向：拉遠鏡頭，縮細車
+        CAMERA_ZOOM = 0.42;
+        CARWIDTH = 85;
+        CARHEIGHT = 105;
+    } else if (screenMode === 'mobile') {
+        // 手機直向
+        CAMERA_ZOOM = 0.55;
+        CARWIDTH = 110;
+        CARHEIGHT = 138;
+    } else {
+        // WEB
+        CAMERA_ZOOM = 0.6;
+        CARWIDTH = 120;
+        CARHEIGHT = 150;
+    }
+}
+
+applyPlayScreenTuning();
+window.addEventListener('resize', applyPlayScreenTuning);
+window.addEventListener('orientationchange', applyPlayScreenTuning);
 
 function requestComm(driverKey, type) {
     // 如果現在有人在說話，或者冷卻中，就不插嘴 (除非是重要訊息)
@@ -1200,7 +1229,28 @@ function followWaypoints(car) {
 
   const targetX = tx + nX * car.currentOffset, targetY = ty + nY * car.currentOffset;
   const finalDX = targetX - car.x, finalDY = targetY - car.y;
-  if (Math.hypot(finalDX, finalDY) < 500) car.waypointIndex = (car.waypointIndex + 1) % wp.length;
+	if (Math.hypot(finalDX, finalDY) < 500) {
+		const oldIndex = car.waypointIndex;
+		const newIndex = (car.waypointIndex + 1) % wp.length;
+
+		// AI 導航用
+		car.waypointIndex = newIndex;
+
+		// 排名用
+		car.raceWaypointIndex = newIndex;
+
+		// AI 完成一圈：由最後 waypoint 回到 0
+		const oldRelative =
+			(oldIndex - raceStartWaypointIndex + wp.length) % wp.length;
+
+		const newRelative =
+			(newIndex - raceStartWaypointIndex + wp.length) % wp.length;
+
+		if (newRelative < oldRelative && oldRelative > wp.length * 0.75) {
+			car.currentLap = (car.currentLap || 0) + 1;
+			car.raceLap = car.currentLap;
+		}
+  }
 
   // --- 3. 核心：極致科學加速模型 (起步猛、後段極慢) ---
   const targetAngle = Math.atan2(finalDY, finalDX);
@@ -1567,8 +1617,37 @@ function buildCarList()  {
   }
 }
 
+function getNearestWaypointIndex(car) {
+    const wps = TRACKS[currentTrack].waypoints;
+    let nearestIndex = 0;
+    let nearestDist = Infinity;
+
+    for (let i = 0; i < wps.length; i++) {
+        const dx = wps[i].x * SCALE - car.x;
+        const dy = wps[i].y * SCALE - car.y;
+        const d = Math.hypot(dx, dy);
+
+        if (d < nearestDist) {
+            nearestDist = d;
+            nearestIndex = i;
+        }
+    }
+
+    return nearestIndex;
+}
+
 function startRace()  {
-  playerCarImg.onload = null;	
+  raceStartTime = Date.now();
+  playerCarImg.onload = null;
+  playerAutoDriving = false;
+  cyberSystemActive = false;
+  cyberSystemTimer = 0;
+  wantsToPit = false;
+  inPit = false;
+  pitTimer = 0;
+  tireHealth = [100, 100, 100, 100];
+  keys = {};
+  touch = {};  
   if (countdownInterval)  {
     clearInterval(countdownInterval);
     countdownInterval = null;
@@ -1579,7 +1658,8 @@ const t = TRACKS[currentTrack];
 const GRID_SPACING = 200;
 const ROW_SPACING = 120;
 if (mode === 'championship'|| mode === 'single')  {
-	lap = 1; // 從第一圈開始
+
+	lap = 0;
     currentLapStartTime = Date.now(); // 重置計時
     raceFinished = false;
   const a = CARSPECS.map((_, i) => i).filter(i => i !== selectedCar);
@@ -1602,8 +1682,17 @@ chosen.forEach((idx, i) =>  {
     speed: 0,
     spec: CARSPECS[idx],
     img: img,
+
+    // 導航用
     waypointIndex: 0,
-    overtakeTimer: 0,
+    currentLap: 0,
+
+    // 排名用，唔好同導航共用
+    raceWaypointIndex: 0,
+    raceLap: 0,
+    gridOrder: i + 1,
+
+	overtakeTimer: 0,
     overtakeSide: 0,
     laneOffset: (i % 2 === 0 ? -60 : 60),
     currentOffset: (i % 2 === 0 ? -60 : 60),
@@ -1623,7 +1712,7 @@ chosen.forEach((idx, i) =>  {
 const playerGridPos = (t.gridPositions && t.gridPositions.length)
 ? t.gridPositions[t.gridPositions.length - 1]
 : t.playerStart;
-player =  {
+player = {
   x: playerGridPos.x * SCALE,
   y: playerGridPos.y * SCALE,
   angle: (t.playerStart && t.playerStart.angle != null) ? t.playerStart.angle : -Math.PI / 2,
@@ -1631,14 +1720,50 @@ player =  {
   forwardSpeed: 0,
   sideSpeed: 0,
   driftAngle: 0,
+
+  // 導航 / Cyber 用
   waypointIndex: 0,
   currentLap: 0,
+
+  // 排名 / 完圈用
+  raceWaypointIndex: 0,
+  raceLap: 0,
+  gridOrder: allCars.length + 1,
+
   lastCheckpoint: -1,
   spec: CARSPECS[selectedCar],
   img: playerCarImg,
   raceTime: 0,
   prevY: playerGridPos.y * SCALE
 };
+
+const wps = TRACKS[currentTrack].waypoints;
+
+// 起步點附近作為 ranking 起點
+raceStartWaypointIndex = getNearestWaypointIndex(player);
+
+// 導航 waypoint 可以保持 0，避免影響 AI / Cyber 原本路線
+allCars.forEach(car => {
+    const nearest = getNearestWaypointIndex(car);
+    const next = (nearest + 1) % wps.length;
+
+    car.currentLap = 0;
+    car.raceLap = 0;
+
+    // AI 導航同排名起點要同步
+    car.waypointIndex = next;
+    car.raceWaypointIndex = next;
+});
+
+const playerNearest = getNearestWaypointIndex(player);
+const playerNext = (playerNearest + 1) % wps.length;
+
+player.currentLap = 0;
+player.raceLap = 0;
+
+// 玩家手動控制唔需要用 waypointIndex 導航，但保持一致可避免其他系統讀錯
+player.waypointIndex = playerNext;
+player.raceWaypointIndex = playerNext;
 
 gameState = 'countdown';
 countdownStartTime = Date.now();
@@ -2267,20 +2392,55 @@ function formatMsToTime(ms) {
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
 }
 
+function getRaceProgress(car) {
+    const wps = TRACKS[currentTrack].waypoints;
+    if (!wps || !wps.length) return 0;
+
+    const lapNo = car.raceLap || 0;
+    const targetIndex = car.raceWaypointIndex || 0;
+
+    // raceWaypointIndex 代表下一個目標點，所以前一點才是目前路段起點
+    const prevIndex = (targetIndex - 1 + wps.length) % wps.length;
+
+    const prev = wps[prevIndex];
+    const target = wps[targetIndex];
+
+    const ax = prev.x * SCALE;
+    const ay = prev.y * SCALE;
+    const bx = target.x * SCALE;
+    const by = target.y * SCALE;
+
+    const abx = bx - ax;
+    const aby = by - ay;
+    const abLenSq = abx * abx + aby * aby || 1;
+
+    // 車在 prev -> target 這段上的投影比例，0 = 剛過 prev，1 = 到 target
+    let t = ((car.x - ax) * abx + (car.y - ay) * aby) / abLenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const relativePrev =
+        (prevIndex - raceStartWaypointIndex + wps.length) % wps.length;
+
+    const gridTieBreaker = -((car.gridOrder || 999) * 0.001);
+
+    return lapNo * 1000000
+         + relativePrev * 10000
+         + t * 10000
+         + gridTieBreaker;
+}
+
 // 新增：統一排名計算法，確保 POS 和 Top 5 一致
 function calculateCurrentRankings() {
-    const trackWpCount = TRACKS[currentTrack].waypoints.length;
     let rankings = allCars.concat(player).map(car => {
-        const cLap = (car === player) ? lap : (car.currentLap || 1);
-        // 權重：圈數第一，路點第二。圈數 * 100000 確保圈數領先者永遠排前面
-        const progress = (cLap * 100000) + (car.waypointIndex * 100);
         const driverKey = car.spec.driver || "default";
+
         return {
             name: DRIVER_DATA[driverKey]?.name || "RACER",
-            progress: progress,
+            progress: getRaceProgress(car),
             isPlayer: car === player
         };
     });
+
     return rankings.sort((a, b) => b.progress - a.progress);
 }
 
@@ -2305,6 +2465,46 @@ function updateRaceRanking() {
     }
 }
 
+function finishRace() {
+    if (raceFinished) return;
+
+    raceFinished = true;
+    gameState = 'finished';
+
+    const finalRankings = calculateCurrentRankings();
+    const finalPlayerPos = finalRankings.findIndex(r => r.isPlayer) + 1;
+
+    document.getElementById('finishScreen').style.display = 'flex';
+    document.getElementById('finalPos').textContent = `FINAL POS #${finalPlayerPos}`;
+
+    const menuBtn = document.getElementById('backToMenuBtn');
+
+    if (mode === 'championship') {
+        if (currentTrack < TRACKS.length - 1) {
+            document.getElementById('finalPos').textContent = `FINISHED #${finalPlayerPos}! READY FOR NEXT TRACK?`;
+            menuBtn.textContent = "NEXT RACE";
+            menuBtn.onclick = () => {
+                currentTrack++;
+                loadTrack(currentTrack);
+                document.getElementById('finishScreen').style.display = 'none';
+                startRace();
+            };
+        } else {
+            document.getElementById('finalPos').textContent = `SERIES COMPLETE! FINAL POS #${finalPlayerPos}`;
+            menuBtn.textContent = "BACK TO MENU";
+            menuBtn.onclick = () => location.reload();
+        }
+    } else if (mode === 'single') {
+        document.getElementById('finalPos').textContent = `FINAL POS #${finalPlayerPos}`;
+        menuBtn.textContent = "BACK TO MENU";
+        menuBtn.onclick = () => location.reload();
+    } else {
+        document.getElementById('finalPos').textContent = `FREE RUN COMPLETE`;
+        menuBtn.textContent = "BACK TO MENU";
+        menuBtn.onclick = () => location.reload();
+    }
+}
+
 function loop() {
     if (gameState === 'paused' || raceFinished) return;
 
@@ -2316,6 +2516,7 @@ function loop() {
 
     const trackData = TRACKS[currentTrack];
     const deltaTime = 1/60;
+	const canUpdateRace = gameState === 'racing' && !raceFinished;
 
     // === 2. 鏡頭位置計算 (賽前滑動) ===
     let camX = player.x, camY = player.y;
@@ -3012,7 +3213,7 @@ if (gameState === 'racing' && !raceFinished)  {
   const PIT_WAYPOINTS_COUNT = trackData.pitWaypoints ? trackData.pitWaypoints.length : 0;
   const PIT_PARKING_INDEX = PIT_WAYPOINTS_COUNT - 3;
   const PIT_EXIT_INDEX = PIT_WAYPOINTS_COUNT - 1;
-  if (inPit)  {
+  if (false && inPit)  {
     player.pitTimer = (player.pitTimer || 0) + deltaTime;
     playerAutoDriving = true;
     player.speed = 0;
@@ -3027,7 +3228,7 @@ if (gameState === 'racing' && !raceFinished)  {
       document.getElementById('lapHud').textContent = `PIT LANE - EXITING`;
     }
 }
-else if (playerAutoDriving && trackData.pitWaypoints && trackData.pitWaypoints.length >= 3)  {
+else if (false && playerAutoDriving && trackData.pitWaypoints && trackData.pitWaypoints.length >= 3)  {
   const targetWaypoint_unscaled = trackData.pitWaypoints[playerPitWaypointIndex];
   if (targetWaypoint_unscaled && playerPitWaypointIndex <= PIT_EXIT_INDEX)  {
     const targetX_scaled = targetWaypoint_unscaled.x * SCALE;
@@ -3059,7 +3260,8 @@ else  {
   player.forwardSpeed = Math.min(player.forwardSpeed || 0, 10.0);
   player.sideSpeed = 0;
   if (!playerAutoDriving && !inPit) {
-  document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+	const displayLap = Math.min(lap + 1, totalLaps);
+	document.getElementById('lapHud').textContent = `LAP ${displayLap}/${totalLaps}`;
   }
   playerPitWaypointIndex = 0;
 }
@@ -3074,7 +3276,9 @@ const dy = playerY - entryY;
 const distToEntry = Math.hypot(dx, dy);
 const PIT_ENTRY_TRIGGER_DIST = 150 * SCALE;
 const pitHudPrompt = document.getElementById('pitHudPrompt');
-   if (distToEntry < PIT_ENTRY_TRIGGER_DIST && (wantsToPit || playerAvgHealth < 20))  {
+const pitAllowed = gameState === 'racing' && (Date.now() - raceStartTime > 8000);
+
+if (pitAllowed && distToEntry < PIT_ENTRY_TRIGGER_DIST && wantsToPit)  {
     playerAutoDriving = true;
     playerPitWaypointIndex = 0;
     inPit = false;
@@ -3124,12 +3328,6 @@ if (!playerAutoDriving)  {
   }
 }
 
-    const pWps = trackData.waypoints;
-    const pTarget = pWps[player.waypointIndex];
-    const pDist = Math.hypot(pTarget.x * SCALE - player.x, pTarget.y * SCALE - player.y);
-    if (pDist < 1000) {
-        player.waypointIndex = (player.waypointIndex + 1) % pWps.length;
-    }
 
 if (keys.ArrowLeft || touch.left) steering = -STEERING_RATE;
 if (keys.ArrowRight || touch.right) steering = STEERING_RATE;
@@ -3540,76 +3738,15 @@ if (boostBar) {
 if (boostCooldown > 0) boostCooldown--;
 drawDashboard(player.speed);
 drawTireMonitor(player, tireMonitorCtx);
-const startLineY = TRACKS[currentTrack].start.y * SCALE;
-if (player.prevY >= startLineY && player.y < startLineY && player.speed > 1) {
-    lap++;
-    
-    // ====== 圈速紀錄邏輯 ======
-    let finishedLapTime = Date.now() - currentLapStartTime;
-    if (lap > 1) { // 第一圈通常是起步，從第二圈過線開始算完整圈速
-        if (!playerBestLap || finishedLapTime < playerBestLap) {
-            playerBestLap = finishedLapTime;
-            document.getElementById('bestLapDisplay').textContent = formatMsToTime(playerBestLap);
-            requestComm(player.spec.driver, "random"); // 喊一句台詞慶祝
-        }
-    }
-    currentLapStartTime = Date.now(); // 重置下一圈計時
-    // ========================
 
-if (lap > totalLaps) {
-    raceFinished = true;
-    gameState = 'finished';
-    
-    // 1. 獲取最後排名 (統一使用 finalPlayerPos)
-    const finalRankings = calculateCurrentRankings();
-    const finalPlayerPos = finalRankings.findIndex(r => r.isPlayer) + 1;
-    
-    document.getElementById('finishScreen').style.display = 'flex';
-    document.getElementById('finalPos').textContent = `FINAL POS #${finalPlayerPos}`;
-
-    const menuBtn = document.getElementById('backToMenuBtn');
-
-    // 2. 根據模式決定按鈕功能
-    if (mode === 'championship') {
-        if (currentTrack < TRACKS.length - 1) {
-            // 錦標賽：還有下一關
-            document.getElementById('finalPos').textContent = `FINISHED #${finalPlayerPos}! READY FOR NEXT TRACK?`;
-            menuBtn.textContent = "NEXT RACE";
-            menuBtn.onclick = () => {
-                currentTrack++; // 進入下一關
-                loadTrack(currentTrack);
-                document.getElementById('finishScreen').style.display = 'none';
-                startRace();
-            };
-        } else {
-            // 錦標賽：最後一關跑完
-            document.getElementById('finalPos').textContent = `SERIES COMPLETE! FINAL POS #${finalPlayerPos}`;
-            menuBtn.textContent = "BACK TO MENU";
-            menuBtn.onclick = () => location.reload(); // 回主選單
-        }
-    } 
-    else if (mode === 'single') {
-        // 單場比賽：跑完直接回選單
-        document.getElementById('finalPos').textContent = `FINAL POS #${finalPlayerPos}`;
-        menuBtn.textContent = "BACK TO MENU";
-        menuBtn.onclick = () => location.reload();
-    }
-    else {
-        // Free Run 或其他
-        document.getElementById('finalPos').textContent = `FREE RUN COMPLETE`;
-        menuBtn.textContent = "BACK TO MENU";
-        menuBtn.onclick = () => location.reload();
-    }
-}
-}
-player.prevY = player.y;
-const sorted = [player, ...allCars].sort((a, b) => a.y - b.y);
-const pos = sorted.findIndex(c => c === player) + 1;
 
 if (!playerAutoDriving && !inPit) {
-    document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+    const displayLap = Math.min(lap + 1, totalLaps);
+	document.getElementById('lapHud').textContent = `LAP ${displayLap}/${totalLaps}`;
 }
-document.getElementById('posHud').textContent = `POS #${pos}/${allCars.length + 1}`;
+
+// 不要再用 y 座標排位，統一用 waypoint/lap 排名
+updateRaceRanking();
 }
 // ===== 世界層結束 =====
 
@@ -3632,7 +3769,8 @@ if (inPit)  {
     else  {
       playerAutoDriving = false;
 	  if (!playerAutoDriving && !inPit) {
-      document.getElementById('lapHud').textContent = `LAP ${lap}/${totalLaps}`;
+		const displayLap = Math.min(lap + 1, totalLaps);
+		document.getElementById('lapHud').textContent = `LAP ${displayLap}/${totalLaps}`;
 	  }
     }
 }}}
@@ -3856,19 +3994,62 @@ if (gameState !== 'title')  {
 	}
     
     // Apply Cyber System Logic
-    updateCyberSystemLogic();
+	if (gameState === 'racing' && cyberSystemActive) {
+		updateCyberSystemLogic();
+	}
 
-        // ====== [ 新增：玩家路點進度追蹤 ] ======
-        const pWps = trackData.waypoints;
-        const pTarget = pWps[player.waypointIndex];
-        const pDist = Math.hypot(pTarget.x * SCALE - player.x, pTarget.y * SCALE - player.y);
-        
-        // 如果距離當前路點小於 800 單位，就前往下一個路點
-        // 玩家的判定範圍要比 AI 大（AI 是 500），因為玩家開車不會完美對準中心線
-        if (pDist < 800) {
-            player.waypointIndex = (player.waypointIndex + 1) % pWps.length;
-        }
-        // ======================================
+		// ====== [ 玩家排名路點進度追蹤：只更新 raceWaypointIndex ] ======
+		const pWps = trackData.waypoints;
+
+		if (pWps && pWps.length) {
+			if (player.raceWaypointIndex == null) {
+				player.raceWaypointIndex = (getNearestWaypointIndex(player) + 1) % pWps.length;
+			}
+
+			const pTarget = pWps[player.raceWaypointIndex];
+
+			if (pTarget) {
+				const pDist = Math.hypot(
+					pTarget.x * SCALE - player.x,
+					pTarget.y * SCALE - player.y
+				);
+
+				if (pDist < 1200) {
+					const oldIndex = player.raceWaypointIndex;
+					const newIndex = (oldIndex + 1) % pWps.length;
+
+					player.raceWaypointIndex = newIndex;
+
+					const oldRelative =
+						(oldIndex - raceStartWaypointIndex + pWps.length) % pWps.length;
+
+					const newRelative =
+						(newIndex - raceStartWaypointIndex + pWps.length) % pWps.length;
+
+					if (newRelative < oldRelative && oldRelative > pWps.length * 0.75) {
+						lap++;
+						player.currentLap = lap;
+						player.raceLap = lap;
+
+						let finishedLapTime = Date.now() - currentLapStartTime;
+						if (lap > 1) {
+							if (!playerBestLap || finishedLapTime < playerBestLap) {
+								playerBestLap = finishedLapTime;
+								document.getElementById('bestLapDisplay').textContent = formatMsToTime(playerBestLap);
+								requestComm(player.spec.driver, "random");
+							}
+						}
+
+						currentLapStartTime = Date.now();
+
+						if (lap >= totalLaps) {
+							finishRace();
+						}
+					}
+				}
+			}
+		}
+		// ======================================
 
 	
         // ====== [新增：空氣補吸 Slipstream 邏輯] ======
